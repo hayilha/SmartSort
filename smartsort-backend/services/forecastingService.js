@@ -1,16 +1,37 @@
+/**
+ * ============================================================================
+ * Smart Bin Predictive Forecasting Service (services/forecastingService.js)
+ * ============================================================================
+ * Analyzes real-time sensor fill levels and recent item processing telemetry
+ * to predict when smart bins will reach capacity.
+ *
+ * Capabilities:
+ *  1. Dynamic Fill Velocity (%/hr): Computes fill speed based on 24-hour item throughput.
+ *  2. Overflow Countdown: Projects exact timestamps when bins will reach 80% (Warning)
+ *     and 95% (Critical Overflow).
+ *  3. Risk Tiering: Categorizes bins into visual urgency tiers (Nominal, Moderate, Approaching, Critical).
+ *  4. Tonnage Calculation: Estimates collectable waste mass in metric tons for fleet sizing.
+ *  5. Fleet Summary: Computes city/campus-wide statistics for executive dispatchers.
+ */
+
 const { prisma } = require('../lib/prisma');
 
 class ForecastingService {
   /**
-   * Predict fill levels, fill velocity (%/hr), and estimated time to critical threshold for all bins/devices.
-   * @param {string} [facilityId] Optional facility filter
+   * Forecasts future fill levels, fill velocities (%/hour), time-to-overflow,
+   * and collectable tonnage for all online smart bins.
+   *
+   * @param {string} [facilityId] - Optional facility UUID filter.
+   * @returns {Promise<object>} Fleet summary metrics and sorted array of bin predictions.
    */
   async predictBinFillLevels(facilityId) {
+    // Only forecast active bins (exclude disconnected/offline devices from active route plans)
     const where = {
       ...(facilityId ? { facilityId } : {}),
       status: { not: 'Offline' }
     };
 
+    // Retrieve active devices along with their parent facility coordinates and last 50 processed items
     const devices = await prisma.device.findMany({
       where,
       include: {
@@ -26,32 +47,38 @@ class ForecastingService {
     });
 
     const now = new Date();
+
+    // ── Analyze Telemetry for Each Bin ────────────────────────────────────────
     const predictions = devices.map((device) => {
       const currentFill = Number(device.fillLevel) || 0;
 
-      // Calculate item processing frequency in the last 24h
+      // Extract recent items sorted by the bin's vision system
       const items = device.processedItems || [];
       const recentItemCount = items.length;
 
-      // Heuristic fill rate (% per hour) based on item throughput and baseline activity
-      // Standard bin capacity ~ 150 items. Average hourly rate:
+      // ── Heuristic Fill Rate Calculation (% per hour) ────────────────────────
+      // Standard bin capacity is ~150 items.
+      // If the bin has recent sorting events, scale velocity by event density:
+      // Minimum floor = 1.5%/hr, Maximum ceiling = 25%/hr.
+      // If no events recently, use a deterministic baseline based on device ID.
       const calculatedRate = recentItemCount > 0
         ? Math.min(25, Math.max(1.5, (recentItemCount / 6) * 1.8))
         : Math.max(1.2, ((device.id.charCodeAt(0) % 7) + 2.5));
 
       const fillRatePerHour = parseFloat(calculatedRate.toFixed(2));
 
-      // Hours to 80% (Warning) and 95% (Critical Overflow)
+      // Calculate percentage points remaining until Warning (80%) and Critical (95%)
       const remainingTo80 = Math.max(0, 80 - currentFill);
       const remainingTo95 = Math.max(0, 95 - currentFill);
 
+      // Estimate hours remaining until reaching thresholds
       const hoursTo80 = fillRatePerHour > 0 ? remainingTo80 / fillRatePerHour : 24;
       const hoursTo95 = fillRatePerHour > 0 ? remainingTo95 / fillRatePerHour : 36;
 
-      // Estimated Overflow Timestamp
+      // Estimated timestamp when the bin will overflow (95% full)
       const overflowDate = new Date(now.getTime() + hoursTo95 * 3600 * 1000);
 
-      // Urgency Classification
+      // ── Risk Tier & Visual Badge Color ──────────────────────────────────────
       let riskTier = 'Nominal';
       let riskColor = '#10b981'; // Green
       if (currentFill >= 90 || hoursTo95 <= 2) {
@@ -65,16 +92,18 @@ class ForecastingService {
         riskColor = '#3b82f6'; // Blue
       }
 
-      // Confidence score based on historical items density
+      // Statistical confidence score based on historical data volume (78% to 96%)
       const confidence = Math.min(96, Math.max(78, 80 + recentItemCount * 0.35));
 
-      // Estimated tonnage ready for collection (kg -> metric tons)
-      const estimatedWeightKg = (currentFill / 100) * 120; // 120kg max standard bin
-      const estimatedTonnage = parseFloat((estimatedWeightKg / 1000).toFixed(3));
+      // ── Estimated Tonnage Calculation ───────────────────────────────────────
+      // A standard 240L municipal bin holds up to ~120 kg of mixed compacted waste
+      const estimatedWeightKg = (currentFill / 100) * 120;
+      const estimatedTonnage = parseFloat((estimatedWeightKg / 1000).toFixed(3)); // Convert kg to metric tons
 
-      // Determine default lat/lng
+      // Fallback coordinate positioning if device has no explicit GPS coordinates
       const baseLat = device.facility?.latitude || 6.673;
       const baseLng = device.facility?.longitude || -1.565;
+      // Deterministic coordinate jitter to prevent multiple bins stacking on the exact same map pixel
       const jitterLat = ((device.id.charCodeAt(device.id.length - 1) % 10) - 5) * 0.003;
       const jitterLng = ((device.id.charCodeAt(0) % 10) - 5) * 0.003;
 
@@ -101,13 +130,14 @@ class ForecastingService {
       };
     });
 
-    // Sort by most urgent (closest to overflow)
+    // Sort predictions by urgency: Bins closest to overflow appear first
     predictions.sort((a, b) => a.hoursTo95 - b.hoursTo95);
 
-    // High level fleet summary
+    // ── High-Level Fleet Summary ──────────────────────────────────────────────
     const totalBins = predictions.length;
     const criticalBins = predictions.filter(p => p.currentFill >= 80 || p.hoursTo95 <= 3).length;
     const elevatedBins = predictions.filter(p => p.currentFill >= 65 && p.currentFill < 80).length;
+    // Calculate total accumulated tonnage across bins ready for collection (>= 70% full)
     const totalCollectableTonnage = predictions
       .filter(p => p.currentFill >= 70)
       .reduce((sum, p) => sum + p.estimatedTonnage, 0);

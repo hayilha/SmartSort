@@ -1,18 +1,39 @@
+/**
+ * ============================================================================
+ * Authentication & Role-Based Access Control Middleware (middleware/auth.js)
+ * ============================================================================
+ * Handles JWT verification against Supabase Auth, local User synchronization,
+ * high-performance in-memory caching, concurrent request deduplication,
+ * network failure resiliency, and role authorization (Admin, Manager, Collector).
+ *
+ * Resilience & Performance Features:
+ *  1. Pre-validation: Parses JWT payload locally before firing remote network calls.
+ *  2. In-Flight Deduplication: Ensures multiple parallel requests using the same JWT
+ *     only trigger a single network validation to Supabase.
+ *  3. In-Memory Token Cache: Caches verified user records for up to 5 minutes.
+ *  4. Outage Tolerance: If Supabase Auth encounters transient network timeouts,
+ *     it gracefully falls back to local database records to prevent user lockouts.
+ */
+
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { prisma } = require('../lib/prisma');
 const AppError = require('../utils/errorHandler');
 const logger = require('../utils/logger');
 
+// Initialize Supabase admin client with public anon key for session verification
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-// In-memory cache for validated tokens: tokenHash -> { user, expiresAt }
+// ── In-Memory Token Cache ───────────────────────────────────────────────────
+// Map: tokenHash (SHA-256 string) -> { user: DbUser, expiresAt: timestampMs }
 const tokenCache = new Map();
 
-// In-flight deduplication: tokenHash -> Promise<user>
+// ── In-Flight Verification Deduplication ────────────────────────────────────
+// Map: tokenHash (SHA-256 string) -> Promise<DbUser>
+// Prevents the "thundering herd" problem when 10+ frontend assets/requests load concurrently
 const inFlightVerifications = new Map();
 
-// Periodic cache cleanup every 5 minutes
+// Periodic cache scavenger: Runs every 5 minutes to prune expired token cache entries
 setInterval(() => {
   const now = Date.now();
   for (const [hash, entry] of tokenCache.entries()) {
@@ -20,15 +41,19 @@ setInterval(() => {
       tokenCache.delete(hash);
     }
   }
-}, 5 * 60 * 1000).unref();
+}, 5 * 60 * 1000).unref(); // .unref() prevents this timer from keeping Node process alive on exit
 
 /**
- * Safely decodes the payload of a JWT without verifying the signature.
+ * Safely decodes the JSON payload portion of a JWT without cryptographic verification.
+ * Used for fast client-side checks (expiration, email extraction) before remote verification.
+ * 
+ * @param {string} token - The raw Bearer JWT string.
+ * @returns {object|null} Decoded JSON claims object, or null if malformed.
  */
 function decodeJwtPayload(token) {
   try {
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) return null; // Standard JWT must consist of: Header.Payload.Signature
     return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
   } catch {
     return null;
@@ -36,7 +61,11 @@ function decodeJwtPayload(token) {
 }
 
 /**
- * Determines whether an error is a transient network or timeout error.
+ * Determines whether a Supabase Auth error is a transient upstream network glitch
+ * (timeout, socket drop, DNS failure) versus a permanent authentication failure (revoked token).
+ * 
+ * @param {Error|object} err - Error returned by Supabase or fetch.
+ * @returns {boolean} True if transient network error, false if auth rejection.
  */
 function isNetworkError(err) {
   if (!err) return false;
@@ -55,7 +84,11 @@ function isNetworkError(err) {
 }
 
 /**
- * Calls Supabase auth.getUser with a strict timeout and 1 retry on network timeout.
+ * Calls Supabase auth.getUser with a strict 7-second timeout and a quick 200ms retry
+ * upon experiencing transient network timeouts.
+ * 
+ * @param {string} token - Raw JWT token.
+ * @returns {Promise<{ data: { user: object|null }, error: object|null }>} Supabase response.
  */
 async function verifyWithSupabase(token) {
   const timeoutMs = 7000;
@@ -86,7 +119,7 @@ async function verifyWithSupabase(token) {
     return await attempt();
   } catch (err) {
     if (isNetworkError(err)) {
-      // 1 quick retry after 200ms
+      // Wait 200ms before retrying once to allow temporary socket contention to clear
       await new Promise((r) => setTimeout(r, 200));
       try {
         return await attempt();
@@ -99,13 +132,17 @@ async function verifyWithSupabase(token) {
 }
 
 /**
- * Resolves or creates a database user for an authenticated Supabase user.
+ * Resolves or auto-provisions a database User record corresponding to a validated Supabase user.
+ * 
+ * @param {object} supabaseUser - Authenticated user object from Supabase Auth.
+ * @returns {Promise<object>} Prisma User model instance.
  */
 async function getOrCreateDbUser(supabaseUser) {
   let user = await prisma.user.findUnique({
     where: { email: supabaseUser.email },
   });
 
+  // If user signed up via Supabase but doesn't exist in application DB, create their record
   if (!user) {
     const role = supabaseUser.email.toLowerCase().includes('admin') ? 'ADMIN' : 'MANAGER';
     user = await prisma.user.create({
@@ -123,6 +160,10 @@ async function getOrCreateDbUser(supabaseUser) {
   return user;
 }
 
+/**
+ * Express Middleware: requireAuth
+ * Validates incoming Bearer tokens, resolves DB user profile, and attaches user to req.user.
+ */
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(' ')[1];
@@ -131,7 +172,7 @@ const requireAuth = async (req, res, next) => {
     return next(new AppError('Authentication token required', 401, 'UNAUTHORIZED'));
   }
 
-  // Pre-validate token structure and expiration
+  // Pre-validate token structure and expiration before hitting remote APIs
   const payload = decodeJwtPayload(token);
   if (!payload || !payload.exp) {
     return next(new AppError('Invalid authentication token format', 401, 'UNAUTHORIZED'));
@@ -142,9 +183,10 @@ const requireAuth = async (req, res, next) => {
     return next(new AppError('Authentication token has expired', 401, 'UNAUTHORIZED'));
   }
 
+  // Generate SHA-256 hash of token to use as cache key (avoids storing plaintext tokens in memory)
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
-  // Check in-memory cache
+  // Fast path: Check in-memory cache
   const cached = tokenCache.get(tokenHash);
   if (cached && cached.expiresAt > nowMs) {
     req.user = cached.user;
@@ -171,14 +213,14 @@ const requireAuth = async (req, res, next) => {
         return dbUser;
       }
 
-      // Check if this was a network failure versus actual auth invalidation
+      // Check if this was an upstream network failure vs actual invalid credentials
       if (isNetworkError(error)) {
         logger.warn('Supabase Auth network timeout/error encountered in requireAuth', {
           error: error.message || error,
           email: payload.email,
         });
 
-        // Graceful fallback: If JWT payload is valid & unexpired, check if user exists in local database
+        // Graceful fallback: If JWT payload was unexpired, check if user exists in local database
         if (payload.email) {
           const existingUser = await prisma.user.findUnique({
             where: { email: payload.email },
@@ -198,7 +240,7 @@ const requireAuth = async (req, res, next) => {
           }
         }
 
-        // Return 503 instead of 401 so the frontend does not inappropriately clear user session
+        // Return 503 instead of 401 so the frontend does not prematurely clear user session
         throw new AppError('Authentication service temporarily unreachable - please try again', 503, 'SERVICE_UNAVAILABLE');
       }
 
@@ -210,6 +252,7 @@ const requireAuth = async (req, res, next) => {
       });
       throw new AppError('Invalid or expired authentication token', 401, 'UNAUTHORIZED');
     })().finally(() => {
+      // Clean up in-flight promise map once resolved or rejected
       inFlightVerifications.delete(tokenHash);
     });
 
@@ -225,6 +268,10 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+/**
+ * Express Middleware: requireAdmin
+ * Restricts route access to users with ADMIN role.
+ */
 const requireAdmin = (req, res, next) => {
   if (req.user && (req.user.role === 'ADMIN' || req.user.email?.toLowerCase().includes('admin'))) {
     next();
@@ -233,6 +280,10 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
+/**
+ * Express Middleware: requireManagerOrAdmin
+ * Permits both Facility Managers and System Admins.
+ */
 const requireManagerOrAdmin = (req, res, next) => {
   if (req.user && (req.user.role === 'ADMIN' || req.user.role === 'MANAGER')) {
     next();
@@ -241,6 +292,10 @@ const requireManagerOrAdmin = (req, res, next) => {
   }
 };
 
+/**
+ * Express Middleware: restrictToFacility
+ * Automatically filters queries to the manager's assigned facility ID if the user is a MANAGER.
+ */
 const restrictToFacility = (req, res, next) => {
   if (req.user && req.user.role === 'MANAGER') {
     req.query.facilityId = req.user.facilityId || req.user.assignedFacility;

@@ -1,12 +1,27 @@
+/**
+ * ============================================================================
+ * Automated Job Scheduler Cron Worker (cron/autoScheduleCron.js)
+ * ============================================================================
+ * Recurring background task that inspects current smart bin fill levels across
+ * all facilities and automatically dispatches pickup requests.
+ *
+ * Execution Interval: Every minute ('* * * * *')
+ * Logic:
+ *  1. Scans all active devices for fill levels exceeding the 80% capacity threshold.
+ *  2. Creates a 'Pending' CollectionJob if none is currently active for that bin.
+ *  3. Generates high-visibility Alert notifications (CRITICAL if >= 95%, WARNING if >= 80%)
+ *     so facility managers receive real-time dashboard notifications.
+ */
+
 const cron = require('node-cron');
 const jobService = require('../services/jobService');
 const { prisma } = require('../lib/prisma');
 const logger = require('../utils/logger');
 
-// Run every minute to check for full bins
+// Run every minute ('* * * * *')
 cron.schedule('* * * * *', async () => {
   try {
-    // 80% threshold, no auto-assignment (leaves jobs pending for manager to assign)
+    // 80% threshold, autoAssign: false (leaves jobs pending in the queue for manager assignment)
     const result = await jobService.autoScheduleJobs({
       threshold: 80,
       autoAssign: false,
@@ -15,19 +30,7 @@ cron.schedule('* * * * *', async () => {
     if (result.createdCount > 0) {
       logger.info(result.message);
 
-      // Create Alert records so the Manager Dashboard notification sidebar picks them up in real-time
-      const alertsData = result.createdJobs.map((job) => {
-        const severity = job.urgency === 'Critical' ? 'CRITICAL' : job.urgency === 'High' ? 'WARNING' : 'INFO';
-        // Extract deviceId from the job — we need to look it up from the original DB record
-        return {
-          severity,
-          title: `Auto-scheduled: ${job.location}`,
-          description: `Bin at ${job.location} reached ${job.fill}% capacity. A collection job has been automatically created.`,
-          status: 'Active',
-        };
-      });
-
-      // We need the actual device IDs for the Alert records — query them from the created jobs
+      // Associate alerts with each created job's underlying device record
       for (const createdJob of result.createdJobs) {
         const dbJob = await prisma.collectionJob.findUnique({
           where: { id: createdJob.id },

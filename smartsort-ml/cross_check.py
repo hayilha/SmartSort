@@ -1,9 +1,20 @@
+"""
+==============================================================================
+Model Accuracy Cross-Check & Validation Suite (cross_check.py)
+==============================================================================
+Batch validation script that iterates over historical camera captures saved
+in the 'captures/' directory, evaluates them against the active TFLite neural
+network, measures confidence distributions, identifies low-confidence outliers,
+and generates a machine-readable JSON evaluation report (cross_check_report.json).
+"""
+
 import os
 import glob
 import json
 import numpy as np
 from PIL import Image
 
+# ── Dynamic Runtime Import ────────────────────────────────────────────────────
 try:
     import ai_edge_litert.interpreter as litert
 except ImportError:
@@ -17,10 +28,18 @@ CAPTURES_DIR = os.path.join(os.path.dirname(__file__), 'captures')
 CLASS_NAMES = ['glass', 'metal', 'paper', 'plastic', 'rejected_waste']
 
 def run_cross_check(confidence_threshold=80.0):
+    """
+    Executes an offline batch audit against all stored camera captures.
+    
+    Args:
+        confidence_threshold (float): Predictions with confidence below this
+                                      percentage are flagged for manual review.
+    """
     if not os.path.exists(MODEL_TFLITE):
         print(f"Error: Model file {MODEL_TFLITE} not found.")
         return
 
+    # Initialize TFLite interpreter and allocate input/output tensor buffers
     interpreter = litert.Interpreter(model_path=MODEL_TFLITE)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
@@ -34,29 +53,32 @@ def run_cross_check(confidence_threshold=80.0):
     low_confidence_items = []
     mismatch_items = []
 
+    # ── Evaluate Each Captured Image ──────────────────────────────────────────
     for cap_path in sorted(captures):
         filename = os.path.basename(cap_path)
         
-        # Parse stored filename: format capture_{timestamp}_{class}.jpg
+        # Parse ground-truth / initial classification from filename:
+        # Standard format: capture_{timestamp}_{class}.jpg
         parts = filename.replace('.jpg', '').split('_')
         stored_label = parts[-1] if len(parts) >= 3 else "unknown"
-        if stored_label == "waste": # handle rejected_waste filename split
+        if stored_label == "waste": # Recombine 'rejected_waste' split by underscore
             stored_label = "rejected_waste"
 
-        # Open and preprocess image
+        # Open image and scale to 224x224 input dimensions
         try:
             img = Image.open(cap_path).convert('RGB').resize((224, 224))
             img_arr = np.array(img, dtype=np.float32)
-            img_arr = np.expand_dims(img_arr, axis=0)
+            img_arr = np.expand_dims(img_arr, axis=0) # Add batch dimension (1, 224, 224, 3)
         except Exception as e:
             print(f"Error processing image {filename}: {e}")
             continue
 
-        # Run inference
+        # Execute model inference
         interpreter.set_tensor(input_details[0]['index'], img_arr)
         interpreter.invoke()
         scores = interpreter.get_tensor(output_details[0]['index'])[0]
 
+        # Extract argmax class index and highest confidence percentage
         top_idx = int(np.argmax(scores))
         predicted_label = CLASS_NAMES[top_idx]
         confidence = float(100 * np.max(scores))
@@ -74,13 +96,15 @@ def run_cross_check(confidence_threshold=80.0):
 
         results.append(item)
 
+        # Flag low confidence detections
         if confidence < confidence_threshold:
             low_confidence_items.append(item)
 
+        # Flag disagreements between initial classification and current model prediction
         if stored_label != "unknown" and stored_label != predicted_label:
             mismatch_items.append(item)
 
-    # Print summary
+    # ── Output Statistical Summary ────────────────────────────────────────────
     print("=" * 60)
     print("           ML PREDICTION CROSS-CHECK SUMMARY           ")
     print("=" * 60)
@@ -101,7 +125,7 @@ def run_cross_check(confidence_threshold=80.0):
         for lc in low_confidence_items[:10]:
             print(f"Filename: {lc['filename']} -> Pred: {lc['predicted_label']} ({lc['confidence']}%)")
 
-    # Save summary report
+    # ── Write JSON Report to Disk ─────────────────────────────────────────────
     report_path = os.path.join(os.path.dirname(__file__), 'cross_check_report.json')
     with open(report_path, 'w') as f:
         json.dump({

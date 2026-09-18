@@ -1,3 +1,22 @@
+"""
+==============================================================================
+SmartSort Edge Vision & Machine Learning Inference Microservice (app.py)
+==============================================================================
+A lightweight, CPU-optimized Python Flask API designed to execute computer vision
+inference on camera frames captured by the smart bin's ESP32-CAM.
+
+Core Responsibilities:
+ 1. Model Loading Waterfall: Dynamically attempts to load models via:
+    LiteRT (ai-edge-litert) -> tflite_runtime -> TensorFlow Lite -> Keras -> Heuristic Fallback.
+ 2. Image Preprocessing: Implements dynamic Center-Crop algorithm to convert 4:3
+    rectangular camera frames into perfect 1:1 squares (224x224) without spatial distortion.
+ 3. Tensor Execution: Evaluates quantized neural network weights and extracts argmax confidence.
+ 4. Zero-Latency Physical Actuation: Immediately returns JSON to the ESP32-CAM, then
+    spawns a detached background thread to forward high-resolution telemetry to Node.js.
+ 5. Fill-Level Telemetry Bridge: Receives ultrasonic distance readings from ESP32,
+    converts centimeters to capacity percentages (25cm bin depth), and relays to dashboard.
+"""
+
 import os
 try:
     from dotenv import load_dotenv
@@ -5,6 +24,7 @@ try:
 except ImportError:
     pass
 
+# ── 1. Sentry APM & Crash Reporting ──────────────────────────────────────────
 try:
     import sentry_sdk
     from sentry_sdk.integrations.flask import FlaskIntegration
@@ -18,9 +38,6 @@ try:
 except ImportError:
     pass
 
-
-
-
 from flask import Flask, request, jsonify
 try:
     import numpy as np
@@ -33,20 +50,19 @@ import base64
 from functools import wraps
 from PIL import Image
 
-# ── Logging Configuration ──────────────────────────────────────────────────────
+# ── 2. Logging Configuration ──────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-
-# ── Environment & Config ───────────────────────────────────────────────────────
+# ── 3. Environment & Configuration ───────────────────────────────────────────
 ML_API_KEY = os.environ.get('ML_API_KEY', 'smartsort-ml-secret-key-2026')
 MODEL_TFLITE = os.environ.get('ML_MODEL_PATH', 'smart_bin_model.tflite')
 MODEL_KERAS  = 'smart_bin_model.keras'
 IMG_SIZE = (224, 224)
 
-# 5-class labels (alphabetical — must match training order)
+# 5-class labels (alphabetical ordering matching model training output neurons)
 class_names = ['glass', 'metal', 'paper', 'plastic', 'rejected_waste']
 
 interpreter = None
@@ -54,8 +70,17 @@ keras_model = None
 
 import importlib
 
-# ── Model Loading Strategy ────────────────────────────────────────────────────
+# ── 4. Resilient Model Loading Strategy (Waterfall) ───────────────────────────
 def load_model():
+    """
+    Attempts to load the trained neural network using the most performant available runtime.
+    Waterfall Order:
+      1. Google LiteRT (ai-edge-litert): Lowest memory footprint on modern edge devices.
+      2. tflite_runtime: Lightweight standalone C++ wrapper.
+      3. TensorFlow Lite: Full TensorFlow package lite interpreter.
+      4. Keras Model: Unquantized full float32 neural network.
+      5. Heuristic Fallback: Deterministic fallback for dev environments without compiled binaries.
+    """
     global interpreter, keras_model
 
     # 1. Try LiteRT (ai-edge-litert)
@@ -101,7 +126,6 @@ def load_model():
     except Exception as e:
         logger.debug(f"Keras model skipped: {e}")
 
-
     logger.warning(
         f"No trained ML model found ({MODEL_TFLITE} or {MODEL_KERAS}). "
         "A heuristic fallback classifier will be used for API requests."
@@ -109,9 +133,12 @@ def load_model():
 
 load_model()
 
-
-# ── Authentication Decorator ────────────────────────────────────────────────────
+# ── 5. Authentication Decorator ───────────────────────────────────────────────
 def require_api_key(f):
+    """
+    Guards incoming inference requests. Requires an 'Authorization: Bearer <token>'
+    matching the shared ML_API_KEY secret.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get('Authorization')
@@ -125,13 +152,29 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return decorated
 
-
+# ── 6. Image Preprocessing & Model Evaluation ──────────────────────────────────
 def predict_image(img_bytes):
-    """Run inference on raw image bytes. Returns (class_name, confidence%)."""
+    """
+    Preprocesses raw JPEG image bytes and runs neural network inference.
+    
+    Processing Steps:
+     1. Decode image bytes to RGB PIL Image.
+     2. Calculate Center-Crop square coordinates based on min(width, height)
+        to prevent aspect ratio squishing (e.g. converting 4:3 OV2640 frames into 1:1).
+     3. Bilinear resize cropped square to target tensor dimensions (224x224).
+     4. Convert to float32 NumPy array with shape (1, 224, 224, 3).
+        NOTE: The Sequential model architecture includes an internal
+        `layers.Rescaling(1./127.5, offset=-1)` normalization layer.
+        Therefore, raw [0, 255] pixel values MUST be passed directly without dividing by 255.
+     5. Set tensor buffer, invoke model, and compute argmax class label and confidence percentage.
+    
+    Returns:
+        tuple: (predicted_class_name: str, confidence_percentage: float)
+    """
     if interpreter is not None and np is not None:
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         
-        # Crop to square first to avoid squishing the aspect ratio
+        # Center-Crop algorithm: calculate shortest dimension and crop from center
         width, height = img.size
         min_dim = min(width, height)
         left = (width - min_dim) / 2
@@ -143,11 +186,8 @@ def predict_image(img_bytes):
         img = img.resize(IMG_SIZE)
         img_array = np.array(img, dtype=np.float32)
         
-        # NOTE: The training script includes `layers.Rescaling(1./127.5, offset=-1)` 
-        # inside the Sequential model itself! Therefore, we MUST pass raw [0, 255] pixels.
-        # Do NOT divide by 255.0 here.
-        
-        img_array = np.expand_dims(img_array, axis=0)  # Shape: (1, 224, 224, 3)
+        # Add batch dimension: (224, 224, 3) -> (1, 224, 224, 3)
+        img_array = np.expand_dims(img_array, axis=0)
         input_details  = interpreter.get_input_details()
         output_details = interpreter.get_output_details()
 
@@ -157,10 +197,11 @@ def predict_image(img_bytes):
         predicted_class = class_names[np.argmax(scores)]
         confidence = float(100 * np.max(scores))
         return predicted_class, confidence
+
     elif keras_model is not None and np is not None:
         img = Image.open(io.BytesIO(img_bytes)).convert('RGB')
         
-        # Crop to square first
+        # Center-Crop square
         width, height = img.size
         min_dim = min(width, height)
         left = (width - min_dim) / 2
@@ -178,8 +219,9 @@ def predict_image(img_bytes):
         predicted_class = class_names[np.argmax(scores)]
         confidence = float(100 * np.max(scores))
         return predicted_class, confidence
+
     else:
-        # Fallback for local testing / dev environment when model file is not compiled on disk
+        # Development fallback: Deterministic modulo hashing on byte values
         logger.warning("No model file available. Using deterministic fallback classification.")
         img_sum = sum(img_bytes) if isinstance(img_bytes, (bytes, bytearray)) else 100
         predicted_idx = img_sum % len(class_names)
@@ -187,13 +229,17 @@ def predict_image(img_bytes):
         confidence = 94.5
         return predicted_class, confidence
 
-
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── 7. HTTP API Routes ─────────────────────────────────────────────────────────
 
 @app.route('/predict', methods=['POST'])
 @require_api_key
 def predict():
-    """Accept an image and return the predicted waste bin class."""
+    """
+    POST /predict
+    Accepts multipart/form-data or raw image bytes from ESP32-CAM.
+    Executes model inference, saves capture to disk, dispatches asynchronous
+    telemetry to the Node.js backend, and returns compact JSON to the ESP32.
+    """
     if 'image' in request.files:
         file = request.files['image']
         img_bytes = file.read()
@@ -205,10 +251,11 @@ def predict():
         }), 400
 
     try:
+        # Run inference
         predicted_class, confidence = predict_image(img_bytes)
         logger.info(f"Prediction: {predicted_class} ({confidence:.2f}%)")
 
-        # Save image locally so the user can see what the ESP32 is capturing
+        # ── Step 1: Save image locally for verification and model retraining ────
         try:
             os.makedirs("captures", exist_ok=True)
             import time
@@ -219,7 +266,9 @@ def predict():
         except Exception as save_err:
             logger.error(f"Failed to save image locally: {save_err}")
 
-        # Forward telemetry to Node backend in a background thread so we don't delay the Arduino!
+        # ── Step 2: Asynchronous Telemetry Dispatch ─────────────────────────────
+        # Physical motors cannot wait for slow cloud HTTP round-trips!
+        # Dispatch telemetry to the Node.js dashboard in a detached background thread.
         try:
             telemetry_data = {
                 "customBinId": "BIN-001",
@@ -244,11 +293,12 @@ def predict():
         except Exception as forward_err:
             logger.error(f"Failed to spawn telemetry thread: {forward_err}")
 
+        # ── Step 3: Return Compact JSON to Microcontroller ──────────────────────
+        # The C++ ESP32 firmware uses lightweight string searching for '"bin":"'
+        # separators=(',', ':') removes whitespace around colons to guarantee matching.
         import json
         from flask import Response
         
-        # ESP32-CAM is doing naive string parsing looking for EXACTLY '"bin":"'
-        # We must return compact JSON without spaces around the colon
         compact_json = json.dumps({
             'bin': predicted_class,
             'confidence': round(confidence, 2)
@@ -261,28 +311,33 @@ def predict():
 
 @app.route('/api/fill-levels', methods=['POST'])
 def fill_levels():
-    """Accept fill levels from ESP32-CAM."""
+    """
+    POST /api/fill-levels
+    Accepts distance measurements (cm) from the ESP32-CAM for all 4 compartments:
+    glass_cm, metal_cm, paper_plastic_cm, rejected_waste_cm.
+    Converts measurements into fill percentages based on a 25cm bin depth,
+    and relays the data to the Node.js backend telemetry route.
+    """
     data = request.json
     if not data:
         return jsonify({"error": "No data provided"}), 400
         
     try:
-        # data contains: glass_cm, metal_cm, paper_plastic_cm, rejected_cm
-        # Convert distances to fill percentages (Bins are 25cm deep)
+        # Standard physical compartment height: 25.0 cm
         BIN_DEPTH_CM = 25.0
         
         percentages = []
         for key in ["glass_cm", "metal_cm", "paper_plastic_cm", "rejected_waste_cm"]:
             cm = float(data.get(key, BIN_DEPTH_CM))
-            # If distance is > depth, fill is 0%. If distance is 0, fill is 100%.
+            # Sensor logic: Distance = 25cm -> 0% full; Distance = 0cm -> 100% full
             fill_pct = max(0, min(100, 100 * (1.0 - (cm / BIN_DEPTH_CM))))
             percentages.append(fill_pct)
             
-        # For the dashboard which only has one fillLevel per Device, let's take the max fill level
+        # Overall bin fill status represents the fullest individual compartment
         max_fill = max(percentages)
         logger.info(f"Received fill levels: {data} -> Max fill: {max_fill:.1f}%")
         
-        # Forward to Node backend
+        # Forward capacity telemetry to Node.js backend
         try:
             payload = {
                 "customBinId": "BIN-001",
@@ -308,10 +363,9 @@ def fill_levels():
         logger.error(f"Error processing fill levels: {e}")
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/', methods=['GET'])
 def index():
-    """Health check endpoint."""
+    """GET / - Microservice health probe and active model status."""
     model_type = 'tflite' if interpreter else ('keras' if keras_model else 'none')
     return jsonify({
         "status": "running",
@@ -320,18 +374,15 @@ def index():
         "classes": class_names
     })
 
-
 @app.route('/debug-sentry', methods=['GET'])
 def debug_sentry():
-    """Endpoint to trigger a test error for Sentry SDK validation."""
+    """GET /debug-sentry - Triggers a test exception to verify Sentry integration."""
     raise RuntimeError("Sentry test error from SmartSort ML Service!")
 
-
-
+# ── 8. Server Process Execution ───────────────────────────────────────────────
 if __name__ == '__main__':
     logger.info("Starting Smart Bin API server...")
     logger.info(f"Classes: {class_names}")
     
-    # Use the PORT environment variable if available, otherwise default to 5001
     port = int(os.environ.get("PORT", 5001))
     app.run(host='0.0.0.0', port=port, debug=False)
