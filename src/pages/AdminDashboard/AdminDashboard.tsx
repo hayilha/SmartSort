@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Warehouse, Smartphone, Activity, DollarSign } from "lucide-react";
+import {
+  Warehouse,
+  Smartphone,
+  Activity,
+  Truck,
+  Search,
+  X,
+  ChevronRight,
+  Navigation,
+  AlertTriangle,
+  CheckCircle2,
+  Filter,
+  Zap,
+} from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
@@ -229,6 +242,16 @@ export default function AdminDashboard() {
   const [layerFilter, setLayerFilter] = useState<"all" | "bins" | "facilities">(
     "all",
   );
+  const [facilitySearch, setFacilitySearch] = useState("");
+  const [facilityFilter, setFacilityFilter] = useState<"all" | "high_fill" | "alerts">("all");
+
+  const handleQuickDispatchFacility = (fac: Facility) => {
+    setSelectedFacilityId(fac.id);
+    setTonnageInput(Math.max(1.5, fac.pendingTonnage || 2.5).toFixed(1));
+    toast.info(`Pre-filled dispatch parameters for ${fac.name}`);
+    const el = document.getElementById("dispatch-controller-card");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
 
   const activeDispatches = useMemo(
     () => bulkJobs.filter((j) => j.status === "Dispatched"),
@@ -313,6 +336,23 @@ export default function AdminDashboard() {
       );
     return allMapPins;
   }, [layerFilter, allMapPins]);
+
+  const filteredFacilities = useMemo(() => {
+    return facilities.filter((fac) => {
+      const q = facilitySearch.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        fac.name.toLowerCase().includes(q) ||
+        fac.region.toLowerCase().includes(q);
+
+      const matchesFilter =
+        facilityFilter === "all" ||
+        (facilityFilter === "high_fill" && fac.averageFill >= 75) ||
+        (facilityFilter === "alerts" && fac.alertCount > 0);
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [facilities, facilitySearch, facilityFilter]);
 
   const baseUrl =
     (import.meta as any).env?.VITE_API_BASE_URL ?? "http://localhost:5000";
@@ -526,6 +566,7 @@ export default function AdminDashboard() {
           iconColorClass="text-[#3b82f6] dark:text-blue-500"
           iconBgClass="bg-[#3b82f6]/10 dark:bg-blue-500/10"
           iconSvg={<Smartphone className="w-4 h-4" strokeWidth={2.5} />}
+          linkTo="/devices"
         />
         <MetricCard
           title="Daily Items Sorted"
@@ -535,6 +576,7 @@ export default function AdminDashboard() {
           iconColorClass="text-[#10b981] dark:text-emerald-500"
           iconBgClass="bg-[#10b981]/10 dark:bg-emerald-500/10"
           iconSvg={<Activity className="w-4 h-4" strokeWidth={2.5} />}
+          linkTo="/analytics"
         />
         <MetricCard
           title="Pending Tonnage"
@@ -543,7 +585,8 @@ export default function AdminDashboard() {
           trendDirection={metrics.criticalAlertsCount > 0 ? "down" : "neutral"}
           iconColorClass="text-[#f59e0b] dark:text-amber-500"
           iconBgClass="bg-[#f59e0b]/10 dark:bg-amber-500/10"
-          iconSvg={<DollarSign className="w-4 h-4" strokeWidth={2.5} />}
+          iconSvg={<Truck className="w-4 h-4" strokeWidth={2.5} />}
+          linkTo="/alerts"
         />
       </div>
 
@@ -551,8 +594,8 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Leaflet Live Map */}
         <div className="lg:col-span-2 bg-card border border-border rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[450px]">
-          <div className="px-5 py-4 border-b border-border flex justify-between items-center bg-slate-50/50 dark:bg-secondary/30">
-            <div className="flex items-center gap-2">
+          <div className="px-5 py-3.5 border-b border-border flex flex-wrap justify-between items-center gap-2 bg-slate-50/50 dark:bg-secondary/30">
+            <div className="flex items-center gap-2.5">
               <span className="flex h-2.5 w-2.5 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
@@ -561,9 +604,17 @@ export default function AdminDashboard() {
                 Live Enterprise Fleet Tracking
               </h3>
             </div>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-400 px-2 py-0.5 rounded font-mono font-bold">
-              GPS STREAM: LIVE
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold text-muted-foreground hidden sm:inline-flex items-center gap-1.5 bg-background border border-border px-2.5 py-1 rounded-lg shadow-2xs">
+                <Truck className="w-3.5 h-3.5 text-primary" />
+                <span>
+                  {activeDispatches.length} Vehicle{activeDispatches.length === 1 ? "" : "s"} En-Route • {facilities.length} Facilities
+                </span>
+              </span>
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-md font-mono font-bold">
+                GPS LIVE
+              </span>
+            </div>
           </div>
 
           <div className="flex-1 relative" style={{ height: "400px" }}>
@@ -581,37 +632,24 @@ export default function AdminDashboard() {
             )}
 
             {/* Layer Filter Pills */}
-            <div className="absolute top-3 right-14 z-10 bg-slate-900/90 text-white backdrop-blur-md p-1 rounded-xl shadow-lg border border-slate-700/60 flex items-center gap-1 text-xs">
-              <button
-                onClick={() => setLayerFilter("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  layerFilter === "all"
-                    ? "bg-emerald-500 text-white shadow-sm"
-                    : "text-slate-300 hover:text-white hover:bg-slate-800/80"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setLayerFilter("bins")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  layerFilter === "bins"
-                    ? "bg-sky-500 text-white shadow-sm"
-                    : "text-slate-300 hover:text-white hover:bg-slate-800/80"
-                }`}
-              >
-                Bins
-              </button>
-              <button
-                onClick={() => setLayerFilter("facilities")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  layerFilter === "facilities"
-                    ? "bg-purple-500 text-white shadow-sm"
-                    : "text-slate-300 hover:text-white hover:bg-slate-800/80"
-                }`}
-              >
-                Facilities
-              </button>
+            <div className="absolute top-3 right-14 z-10 bg-slate-900/85 backdrop-blur-md text-white p-1 rounded-xl shadow-lg border border-slate-700/60 flex items-center gap-1 text-xs">
+              {(["all", "bins", "facilities"] as const).map((layer) => (
+                <button
+                  key={layer}
+                  onClick={() => setLayerFilter(layer)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                    layerFilter === layer
+                      ? layer === "all"
+                        ? "bg-emerald-500 text-white shadow-xs"
+                        : layer === "bins"
+                          ? "bg-sky-500 text-white shadow-xs"
+                          : "bg-purple-500 text-white shadow-xs"
+                      : "text-slate-300 hover:text-white hover:bg-slate-800/80"
+                  }`}
+                >
+                  {layer === "all" ? "All" : layer === "bins" ? "Bins" : "Facilities"}
+                </button>
+              ))}
             </div>
 
             <MapLibreMap
@@ -626,16 +664,39 @@ export default function AdminDashboard() {
         </div>
 
         {/* Third-Party Collection Dispatch Panel */}
-        <div id="dispatch-controller-card" className="bg-card border border-border rounded-xl shadow-sm p-6 flex flex-col gap-5">
+        <div id="dispatch-controller-card" className="bg-card border border-border rounded-xl shadow-sm p-6 flex flex-col gap-4">
           <div>
             <h3 className="font-bold text-sm text-foreground dark:text-white">
               Third-Party Dispatch Controller
             </h3>
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-0.5">
               Select an overloaded facility and assign a partner garbage
               collection agency in Ghana.
             </p>
           </div>
+
+          {/* Quick-Fill Overloaded Facility Banner */}
+          {(() => {
+            const overloaded = facilities.filter((f) => (f.pendingTonnage || 0) >= 2.5);
+            if (overloaded.length === 0) return null;
+            return (
+              <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Zap className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="text-xs font-medium text-amber-900 dark:text-amber-300 truncate">
+                    <strong>{overloaded[0].name}</strong> ({overloaded[0].pendingTonnage}T) over threshold
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleQuickDispatchFacility(overloaded[0])}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white shrink-0 hover:bg-amber-600 active:scale-95 transition-all cursor-pointer shadow-2xs"
+                >
+                  Quick Fill
+                </button>
+              </div>
+            );
+          })()}
 
           <form onSubmit={handleDispatchSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
@@ -694,7 +755,7 @@ export default function AdminDashboard() {
               type="submit"
               data-testid="admin-dispatch-submit"
               disabled={isSubmitting || !selectedFacilityId}
-              className="h-10 bg-primary hover:bg-primary/90 text-white font-bold text-sm rounded-lg transition-all shadow-md mt-2 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+              className="h-10 bg-primary hover:bg-primary/90 text-white font-bold text-sm rounded-lg transition-all shadow-md mt-1 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
             >
               {isSubmitting
                 ? "Processing Dispatch..."
@@ -707,7 +768,7 @@ export default function AdminDashboard() {
             <h4 className="font-bold text-xs text-foreground dark:text-white uppercase tracking-wider mb-2">
               Facility comparative capacity
             </h4>
-            <div style={{ width: "100%", height: "150px" }}>
+            <div style={{ width: "100%", height: "140px" }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartData}
@@ -717,11 +778,12 @@ export default function AdminDashboard() {
                   <YAxis stroke="#94a3b8" fontSize={9} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#1e293b",
-                      border: "none",
+                      backgroundColor: "rgba(15, 23, 42, 0.95)",
+                      border: "1px solid rgba(255,255,255,0.1)",
                       borderRadius: "8px",
                       color: "#fff",
                       fontSize: "11px",
+                      backdropFilter: "blur(4px)",
                     }}
                   />
                   <Bar
@@ -740,85 +802,161 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Onboarded Facilities Detail Table */}
         <div className="lg:col-span-2 bg-card border border-border rounded-xl shadow-sm p-6">
-          <div className="mb-4">
-            <h3 className="font-bold text-sm text-foreground dark:text-white">
-              Onboarded Facilities Health Metrics
-            </h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Direct tracking status of connected devices, fill ratios, and
-              active error warnings.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <h3 className="font-bold text-sm text-foreground dark:text-white">
+                Onboarded Facilities Health Metrics
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Direct tracking status of connected devices, fill ratios, and
+                active error warnings.
+              </p>
+            </div>
+
+            {/* Search & Filter Bar */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Filter facility..."
+                  value={facilitySearch}
+                  onChange={(e) => setFacilitySearch(e.target.value)}
+                  className="pl-8 pr-7 py-1 text-xs bg-background border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 w-[140px] sm:w-[170px] transition-all"
+                />
+                {facilitySearch && (
+                  <button
+                    onClick={() => setFacilitySearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 bg-background border border-border p-0.5 rounded-lg shadow-2xs">
+                {(["all", "high_fill", "alerts"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFacilityFilter(f)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
+                      facilityFilter === f
+                        ? f === "alerts"
+                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                          : f === "high_fill"
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                            : "bg-primary text-white"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {f === "all" ? "All" : f === "high_fill" ? "≥75%" : "Alerts"}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Facility Name</TableHead>
-                  <TableHead>Region</TableHead>
-                  <TableHead>Device Online</TableHead>
-                  <TableHead>Avg Fill Level</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Active Alerts</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Facility Name</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Region</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Device Online</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Avg Fill Level</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+                  <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Alerts</TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {facilities.map((fac) => (
-                  <TableRow key={fac.id}>
-                    <TableCell className="font-bold text-sm text-foreground dark:text-white">
-                      {fac.name}
-                    </TableCell>
-                    <TableCell>{fac.region}</TableCell>
-                    <TableCell>
-                      <span className="font-semibold">
-                        {fac.activeDevices} / {fac.deviceCount}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 min-w-[120px]">
-                        <Progress
-                          value={fac.averageFill}
-                          className="h-2 flex-1"
-                        />
-                        <span className="text-xs font-mono font-bold text-foreground">
-                          {fac.averageFill}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                          fac.status === "Active"
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400"
-                            : "bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400"
-                        }`}
-                      >
-                        {fac.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {fac.alertCount > 0 ? (
-                        <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400 px-2 py-0.5 rounded text-[10px] font-bold animate-pulse">
-                          ⚠️ {fac.alertCount} Alerts
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          None
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        to={`/dashboard?facilityId=${fac.id}`}
-                        data-testid={`admin-inspect-${fac.id}`}
-                        className="text-xs bg-[#006c49] dark:bg-emerald-600 text-white px-2.5 py-1 rounded hover:bg-[#006c49]/90 dark:hover:bg-emerald-700 font-medium transition-colors cursor-pointer active:scale-[0.98] inline-block"
-                      >
-                        Inspect
-                      </Link>
+                {filteredFacilities.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-xs text-muted-foreground">
+                      No facilities match your search or filter criteria.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredFacilities.map((fac) => (
+                    <TableRow key={fac.id}>
+                      <TableCell className="font-bold text-sm text-foreground dark:text-white">
+                        {fac.name}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{fac.region}</TableCell>
+                      <TableCell>
+                        <span className="font-semibold text-xs text-foreground">
+                          {fac.activeDevices} / {fac.deviceCount}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 min-w-[120px]">
+                          <Progress
+                            value={fac.averageFill}
+                            className={`h-2 flex-1 ${
+                              fac.averageFill >= 80
+                                ? "[&>[data-slot=progress-indicator]]:bg-rose-500"
+                                : fac.averageFill >= 50
+                                  ? "[&>[data-slot=progress-indicator]]:bg-amber-500"
+                                  : "[&>[data-slot=progress-indicator]]:bg-emerald-500"
+                            }`}
+                          />
+                          <span
+                            className={`text-xs font-mono font-bold ${
+                              fac.averageFill >= 80
+                                ? "text-rose-600 dark:text-rose-400"
+                                : fac.averageFill >= 50
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-emerald-600 dark:text-emerald-400"
+                            }`}
+                          >
+                            {fac.averageFill}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            fac.status === "Active"
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400"
+                              : "bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400"
+                          }`}
+                        >
+                          {fac.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {fac.alertCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-400 px-2 py-0.5 rounded text-[10px] font-bold animate-pulse">
+                            ⚠️ {fac.alertCount} Alerts
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            None
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {fac.pendingTonnage >= 2.0 && (
+                            <button
+                              onClick={() => handleQuickDispatchFacility(fac)}
+                              className="text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-1 rounded-md font-semibold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                              title="Pre-fill Dispatch Form"
+                            >
+                              Dispatch
+                            </button>
+                          )}
+                          <Link
+                            to={`/dashboard?facilityId=${fac.id}`}
+                            data-testid={`admin-inspect-${fac.id}`}
+                            className="text-xs bg-primary hover:bg-primary/90 text-white px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer active:scale-95 inline-block shadow-2xs"
+                          >
+                            Inspect
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

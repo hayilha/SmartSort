@@ -301,7 +301,7 @@ export default function Landing() {
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-foreground dark:text-white tracking-tight leading-[1.15]">
             The Future of <br />
-            <span className="text-[#2563eb] dark:text-blue-400 bg-gradient-to-r from-[#2563eb] dark:from-blue-400 to-[#006c49] dark:to-emerald-400 bg-clip-text text-transparent">Waste Intelligence</span>
+            <span className="text-primary dark:text-emerald-400 bg-gradient-to-r from-emerald-600 dark:from-emerald-400 to-teal-500 dark:to-teal-300 bg-clip-text text-transparent">Waste Intelligence</span>
           </h1>
 
           <p className="text-base sm:text-lg text-muted-foreground leading-relaxed font-normal">
@@ -314,7 +314,7 @@ export default function Landing() {
               whileTap={{ scale: 0.98 }}
               onClick={scrollToInquiry}
               data-testid="hero-demo-btn"
-              className="px-6 py-3.5 bg-[#2563eb] dark:bg-blue-600 hover:bg-[#1d4ed8] dark:hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-lg shadow-[#2563eb]/15 dark:shadow-blue-900/20 transition-all flex items-center gap-2 cursor-pointer"
+              className="px-6 py-3.5 bg-primary hover:bg-primary/90 text-white text-sm font-bold rounded-lg shadow-lg shadow-emerald-900/15 transition-all flex items-center gap-2 cursor-pointer"
             >
               Request a Demo
               <motion.span 
@@ -330,9 +330,9 @@ export default function Landing() {
               whileTap={{ scale: 0.98 }}
               onClick={scrollToInquiry}
               data-testid="hero-video-btn"
-              className="px-6 py-3.5 bg-card hover:bg-background dark:hover:bg-secondary text-foreground dark:text-white text-sm font-bold rounded-lg border border-border shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+              className="px-6 py-3.5 bg-card hover:bg-muted text-foreground dark:text-white text-sm font-bold rounded-lg border border-border shadow-2xs transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Play className="w-4 h-4 text-[#2563eb] dark:text-blue-400" strokeWidth={2.5} />
+              <Play className="w-4 h-4 text-primary dark:text-emerald-400" strokeWidth={2.5} />
               Watch Video
             </motion.button>
           </div>
@@ -364,8 +364,8 @@ export default function Landing() {
           className="lg:col-span-7 relative"
         >
           {/* Card Border wrapper with blur glows */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#2563eb] to-[#006c49] opacity-20 blur-[60px] rounded-3xl" />
-          <div className="relative rounded-2xl overflow-hidden border border-[#cbd5e1] dark:border-border shadow-2xl bg-[#0f172a]">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/25 to-teal-500/20 opacity-30 blur-[60px] rounded-3xl" />
+          <div className="relative rounded-2xl overflow-hidden border border-border shadow-2xl bg-[#0f172a]">
             <img 
               src={imgHero} 
               alt="Futuristic SmartSort Bin Conveyor Line" 
@@ -428,13 +428,13 @@ export default function Landing() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
-            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(37,99,235,0.15)" }}
+            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(0,108,73,0.15)" }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="md:col-span-8 bg-gradient-to-br from-[#eff6ff] to-[#f8fafc] dark:from-[#0b1c30] dark:to-[#0f2942] border border-[#cbd5e1]/60 dark:border-border rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row gap-6 overflow-hidden shadow-sm hover:shadow-md cursor-pointer"
+            className="md:col-span-8 bg-gradient-to-br from-emerald-50/40 via-slate-50/60 to-white dark:from-[#052118] dark:to-[#081e26] border border-emerald-100/70 dark:border-emerald-950/50 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row gap-6 overflow-hidden shadow-sm hover:shadow-md cursor-pointer"
           >
             <div className="flex-1 flex flex-col justify-between gap-6">
               <div className="flex flex-col gap-4">
-                <div className="w-10 h-10 bg-[#2563eb]/10 dark:bg-blue-500/10 rounded-xl flex items-center justify-center text-[#2563eb] dark:text-blue-400">
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary dark:text-emerald-400">
                   <Sidebar className="w-5 h-5" strokeWidth={2.5} />
                 </div>
                 <h3 className="text-xl font-bold">98% Sorting Accuracy</h3>
@@ -442,11 +442,11 @@ export default function Landing() {
                   Our deep learning models are trained on over 50 million labeled waste instances, ensuring near-perfect material identification.
                 </p>
               </div>
-              <button onClick={scrollToInquiry} data-testid="explore-models-btn" className="text-xs font-bold text-[#2563eb] dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1 active:scale-[0.98]">
+              <button onClick={scrollToInquiry} data-testid="explore-models-btn" className="text-xs font-bold text-primary dark:text-emerald-400 hover:text-primary/80 dark:hover:text-emerald-300 cursor-pointer flex items-center gap-1 active:scale-[0.98]">
                 Explore Data Models →
               </button>
             </div>
-            <div className="flex-1 -mb-10 -mr-6 sm:-mr-12 rounded-tl-xl overflow-hidden border-t border-l border-[#cbd5e1] dark:border-border">
+            <div className="flex-1 -mb-10 -mr-6 sm:-mr-12 rounded-tl-xl overflow-hidden border-t border-l border-border/80">
               <img src={imgLaptopUi} alt="Dashboard Interface Preview" className="w-full h-full object-cover" />
             </div>
           </motion.div>
@@ -456,22 +456,22 @@ export default function Landing() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
-            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(139,92,246,0.2)" }}
+            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(0,108,73,0.25)" }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-            className="md:col-span-4 bg-gradient-to-br from-[#8b5cf6] to-[#6d28d9] rounded-2xl p-6 sm:p-8 text-white flex flex-col justify-between gap-12 shadow-md hover:shadow-lg cursor-pointer"
+            className="md:col-span-4 bg-gradient-to-br from-[#006c49] via-[#045238] to-[#023323] dark:from-[#064e3b] dark:to-[#022c22] border border-emerald-600/30 rounded-2xl p-6 sm:p-8 text-white flex flex-col justify-between gap-12 shadow-md hover:shadow-lg cursor-pointer"
           >
             <div className="flex flex-col gap-4">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-white/15 rounded-xl flex items-center justify-center">
                 <Target className="w-5 h-5" strokeWidth={2.5} />
               </div>
               <h3 className="text-xl font-bold">Real-Time Monitoring</h3>
-              <p className="text-xs text-white/80 leading-relaxed">
+              <p className="text-xs text-emerald-100/80 leading-relaxed">
                 Latency-free streaming of sorting sensor status at all your facilities via a unified dashboard.
               </p>
             </div>
-            <div className="flex items-end justify-between border-t border-white/25 pt-4">
+            <div className="flex items-end justify-between border-t border-white/20 pt-4">
               <span className="text-4xl font-extrabold tracking-tight">24/7</span>
-              <Clock className="w-7 h-7 opacity-60" strokeWidth={2} />
+              <Clock className="w-7 h-7 text-emerald-300/70" strokeWidth={2} />
             </div>
           </motion.div>
 
@@ -480,11 +480,11 @@ export default function Landing() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
-            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(0,0,0,0.2)" }}
+            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(0,108,73,0.12)" }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="md:col-span-4 bg-card text-foreground dark:text-white border border-[#cbd5e1]/60 dark:border-white/10 rounded-2xl p-6 sm:p-8 flex flex-col justify-between gap-10 hover:shadow-md cursor-pointer"
+            className="md:col-span-4 bg-card text-foreground border border-border/80 rounded-2xl p-6 sm:p-8 flex flex-col justify-between gap-10 hover:shadow-md cursor-pointer"
           >
-            <div className="w-10 h-10 bg-[#3b82f6]/10 dark:bg-blue-500/10 rounded-xl flex items-center justify-center text-[#3b82f6] dark:text-blue-400">
+            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary dark:text-emerald-400">
               <LayoutGrid className="w-5 h-5" strokeWidth={2.5} />
             </div>
             <div className="flex flex-col gap-2">
@@ -500,9 +500,9 @@ export default function Landing() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: "-100px" }}
-            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(37,99,235,0.1)" }}
+            whileHover={{ y: -4, boxShadow: "0 10px 30px -10px rgba(0,108,73,0.12)" }}
             transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-            className="md:col-span-8 bg-[#eff6ff] dark:bg-[#1e293b]/50 border border-[#cbd5e1]/60 dark:border-border rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 hover:shadow-md cursor-pointer"
+            className="md:col-span-8 bg-emerald-50/40 dark:bg-card/60 border border-emerald-100/60 dark:border-border rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 hover:shadow-md cursor-pointer"
           >
             <div className="flex-1 flex flex-col gap-4">
               <h3 className="text-xl font-bold">ESG Compliance Ready</h3>
@@ -511,16 +511,16 @@ export default function Landing() {
               </p>
             </div>
             {/* Visual representation of ESG scores */}
-            <div className="flex-1 w-full max-w-[280px] bg-card border border-[#cbd5e1]/50 dark:border-white/5 rounded-xl p-4.5 flex flex-col gap-3">
+            <div className="flex-1 w-full max-w-[280px] bg-card border border-border/70 rounded-xl p-4.5 flex flex-col gap-3 shadow-xs">
               {[
-                { label: "ENVIRONMENTAL SCORE", value: 92, color: "bg-[#10b981] dark:bg-emerald-500" },
-                { label: "SOCIAL RESPONSIBILITY", value: 84, color: "bg-[#2563eb] dark:bg-blue-500" },
-                { label: "COMPLIANCE LEVEL", value: 95, color: "bg-[#8b5cf6] dark:bg-purple-500" }
+                { label: "ENVIRONMENTAL SCORE", value: 92, color: "bg-[#10b981] dark:bg-emerald-400" },
+                { label: "SOCIAL RESPONSIBILITY", value: 84, color: "bg-[#006c49] dark:bg-emerald-600" },
+                { label: "COMPLIANCE LEVEL", value: 95, color: "bg-teal-500 dark:bg-teal-400" }
               ].map(stat => (
                 <div key={stat.label} className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between text-[8px] font-bold tracking-wider text-muted-foreground">
                     <span>{stat.label}</span>
-                    <span>{stat.value}%</span>
+                    <span className="text-foreground dark:text-white">{stat.value}%</span>
                   </div>
                   <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <motion.div 
@@ -540,7 +540,7 @@ export default function Landing() {
       </section>
 
       {/* 5. How SmartSort Operates Section */}
-      <section id="process" className="bg-[#eff6ff]/50 dark:bg-secondary/10 border-y border-[#cbd5e1]/40 dark:border-border/40 py-20 sm:py-28 px-6">
+      <section id="process" className="bg-slate-50/80 dark:bg-secondary/15 border-y border-border/60 py-20 sm:py-28 px-6">
         <div className="max-w-7xl mx-auto flex flex-col gap-16">
           <div className="text-center flex flex-col gap-3 max-w-xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground dark:text-white tracking-tight">
@@ -566,18 +566,21 @@ export default function Landing() {
             }}
             className="grid grid-cols-1 md:grid-cols-3 gap-10 relative"
           >
+            {/* Desktop Industrial Conveyor Track Line */}
+            <div className="hidden md:block absolute top-8 left-[18%] right-[18%] h-0.5 border-t-2 border-dashed border-emerald-500/30 dark:border-emerald-500/20 z-0" />
+
             {/* Step 1 */}
             <motion.div 
               variants={{
                 hidden: { opacity: 0, y: 20 },
                 show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
               }}
-              className="flex flex-col items-center text-center gap-5"
+              className="flex flex-col items-center text-center gap-5 relative z-10"
             >
-              <div className="w-16 h-16 rounded-2xl bg-card border border-[#cbd5e1] dark:border-border shadow-sm flex items-center justify-center text-[#2563eb] dark:text-blue-400">
+              <div className="w-16 h-16 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-center text-primary dark:text-emerald-400 transition-transform hover:scale-105">
                 <Camera className="w-6 h-6" strokeWidth={2} />
               </div>
-              <div className="w-6 h-6 rounded-full bg-[#2563eb] dark:bg-blue-600 text-white text-xs font-bold flex items-center justify-center">1</div>
+              <div className="w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-xs">1</div>
               <h3 className="text-lg font-bold">Object Detection</h3>
               <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
                 High-speed multispectral cameras identify individual waste items on the conveyor belt in milliseconds.
@@ -590,12 +593,12 @@ export default function Landing() {
                 hidden: { opacity: 0, y: 20 },
                 show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
               }}
-              className="flex flex-col items-center text-center gap-5"
+              className="flex flex-col items-center text-center gap-5 relative z-10"
             >
-              <div className="w-16 h-16 rounded-2xl bg-card border border-[#cbd5e1] dark:border-border shadow-sm flex items-center justify-center text-[#10b981] dark:text-emerald-400">
+              <div className="w-16 h-16 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-center text-primary dark:text-emerald-400 transition-transform hover:scale-105">
                 <Layers className="w-6 h-6" strokeWidth={2} />
               </div>
-              <div className="w-6 h-6 rounded-full bg-[#10b981] dark:bg-emerald-600 text-white text-xs font-bold flex items-center justify-center">2</div>
+              <div className="w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-xs">2</div>
               <h3 className="text-lg font-bold">AI Classification</h3>
               <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
                 Our neural network classifies materials (HDPE, PET, Paper, Metal) with laboratory-grade precision.
@@ -608,12 +611,12 @@ export default function Landing() {
                 hidden: { opacity: 0, y: 20 },
                 show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
               }}
-              className="flex flex-col items-center text-center gap-5"
+              className="flex flex-col items-center text-center gap-5 relative z-10"
             >
-              <div className="w-16 h-16 rounded-2xl bg-card border border-[#cbd5e1] dark:border-border shadow-sm flex items-center justify-center text-[#8b5cf6] dark:text-purple-400">
+              <div className="w-16 h-16 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-center text-primary dark:text-emerald-400 transition-transform hover:scale-105">
                 <Cpu className="w-6 h-6" strokeWidth={2} />
               </div>
-              <div className="w-6 h-6 rounded-full bg-[#8b5cf6] dark:bg-purple-600 text-white text-xs font-bold flex items-center justify-center">3</div>
+              <div className="w-6 h-6 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shadow-xs">3</div>
               <h3 className="text-lg font-bold">Automated Sorting</h3>
               <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
                 Robotic actuators or air-jet systems execute precise physical separation at speeds up to 300 items per minute.
@@ -625,43 +628,43 @@ export default function Landing() {
 
       {/* 6. CTA / Inquiry Form Section */}
       <section id="inquiry-section" className="px-6 sm:px-12 py-20 sm:py-28 max-w-7xl mx-auto">
-        <div className="bg-card text-white border border-white/10 rounded-3xl p-8 sm:p-12 lg:p-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative overflow-hidden shadow-2xl">
-          <div className="absolute w-80 h-80 bg-[#2563eb]/20 dark:bg-blue-500/10 rounded-full blur-[100px] -bottom-20 -left-20 pointer-events-none" />
+        <div className="bg-gradient-to-br from-[#021f17] via-[#043324] to-[#021a13] text-white border border-emerald-900/60 rounded-3xl p-8 sm:p-12 lg:p-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative overflow-hidden shadow-2xl">
+          <div className="absolute w-80 h-80 bg-primary/20 rounded-full blur-[100px] -bottom-20 -left-20 pointer-events-none" />
 
           {/* Left Column */}
           <div className="flex flex-col gap-6 relative z-10">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight text-white">
               Ready to optimize your facility?
             </h2>
-            <p className="text-muted-foreground text-sm sm:text-base leading-relaxed font-light">
+            <p className="text-emerald-100/80 text-sm sm:text-base leading-relaxed font-light">
               Join the world's most advanced sorting facilities. Contact our solutions engineering team for a custom feasibility study.
             </p>
-            <div className="flex flex-col gap-3 pt-2 text-xs sm:text-sm font-medium text-muted-foreground">
+            <div className="flex flex-col gap-3 pt-2 text-xs sm:text-sm font-medium text-emerald-100/90">
               <div className="flex items-center gap-3">
-                <span className="w-5 h-5 rounded-full bg-[#10b981]/25 dark:bg-emerald-500/20 border border-[#10b981]/30 dark:border-emerald-500/30 flex items-center justify-center text-[#10b981] dark:text-emerald-400">✓</span>
+                <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">✓</span>
                 <span>On-site feasibility assessment</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-5 h-5 rounded-full bg-[#10b981]/25 dark:bg-emerald-500/20 border border-[#10b981]/30 dark:border-emerald-500/30 flex items-center justify-center text-[#10b981] dark:text-emerald-400">✓</span>
+                <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">✓</span>
                 <span>Custom ROI projection reports</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="w-5 h-5 rounded-full bg-[#10b981]/25 dark:bg-emerald-500/20 border border-[#10b981]/30 dark:border-emerald-500/30 flex items-center justify-center text-[#10b981] dark:text-emerald-400">✓</span>
+                <span className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">✓</span>
                 <span>Full stack hardware/software lease options</span>
               </div>
             </div>
           </div>
 
           {/* Right Column (Inquiry Form Card) */}
-          <div className="bg-white dark:bg-card text-foreground dark:text-white rounded-2xl p-6 sm:p-8 border border-[#cbd5e1] dark:border-border shadow-xl relative z-10">
+          <div className="bg-card text-foreground rounded-2xl p-6 sm:p-8 border border-border shadow-2xl relative z-10">
             {submitted ? (
               <div className="py-12 flex flex-col items-center justify-center text-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-[#10b981]/15 dark:bg-emerald-500/15 flex items-center justify-center text-[#10b981] dark:text-emerald-400">
+                <div className="w-16 h-16 rounded-full bg-primary/15 flex items-center justify-center text-primary dark:text-emerald-400">
                   <Check className="w-7 h-7" strokeWidth={2.5} />
                 </div>
                 <h3 className="text-xl font-bold">Welcome to SmartSort!</h3>
                 <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
-                  Check your email at <span className="font-semibold">{form.email}</span> for your login credentials and portal access link.
+                  Check your email at <span className="font-semibold text-foreground">{form.email}</span> for your login credentials and portal access link.
                 </p>
               </div>
             ) : (
@@ -692,10 +695,10 @@ export default function Landing() {
                     value={form.companyName}
                     onChange={e => handleCompanyNameChange(e.target.value)}
                     onBlur={handleCompanyNameBlur}
-                    className={`h-11 px-4 border rounded-lg text-sm bg-slate-50 dark:bg-secondary focus:outline-none focus:ring-2 transition-all ${
+                    className={`h-11 px-4 border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 transition-all ${
                       errors.companyName
                         ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                        : "border-[#cbd5e1] dark:border-border focus:ring-[#2563eb]/20 dark:focus:ring-blue-500/20 focus:border-[#2563eb] dark:focus:border-blue-500"
+                        : "border-border focus:ring-primary/20 focus:border-primary"
                     }`}
                   />
                   <FieldError message={errors.companyName} />
@@ -709,7 +712,7 @@ export default function Landing() {
                     value={form.tonsRange}
                     data-testid="inquiry-tons"
                     onChange={e => setForm({...form, tonsRange: e.target.value})}
-                    className="h-11 px-4 border border-[#cbd5e1] dark:border-border rounded-lg text-sm bg-slate-50 dark:bg-secondary focus:outline-none focus:ring-2 focus:ring-[#2563eb]/20 dark:focus:ring-blue-500/20 focus:border-[#2563eb] dark:focus:border-blue-500 transition-all cursor-pointer"
+                    className="h-11 px-4 border border-border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
                   >
                     <option value="Less than 50">Less than 50 Tons</option>
                     <option value="50 - 200">50 - 200 Tons</option>
@@ -737,10 +740,10 @@ export default function Landing() {
                     value={form.email}
                     onChange={e => handleEmailChange(e.target.value)}
                     onBlur={handleEmailBlur}
-                    className={`h-11 px-4 border rounded-lg text-sm bg-slate-50 dark:bg-secondary focus:outline-none focus:ring-2 transition-all ${
+                    className={`h-11 px-4 border rounded-lg text-sm bg-background focus:outline-none focus:ring-2 transition-all ${
                       errors.email
                         ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
-                        : "border-[#cbd5e1] dark:border-border focus:ring-[#2563eb]/20 dark:focus:ring-blue-500/20 focus:border-[#2563eb] dark:focus:border-blue-500"
+                        : "border-border focus:ring-primary/20 focus:border-primary"
                     }`}
                   />
                   <FieldError message={errors.email} />
@@ -758,13 +761,13 @@ export default function Landing() {
                   }
                   className={`w-full h-11 text-sm font-bold tracking-wide rounded-lg transition-all shadow-md mt-2 flex items-center justify-center gap-2 ${
                     status === "sending"
-                      ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
                       : form.companyName.trim() !== "" &&
                         form.email.trim() !== "" &&
                         !errors.companyName &&
                         !errors.email
-                        ? "bg-[#2563eb] dark:bg-blue-600 hover:bg-[#1d4ed8] dark:hover:bg-blue-700 text-white active:scale-[0.98] cursor-pointer"
-                        : "bg-slate-100 text-slate-400 border border-transparent cursor-not-allowed"
+                        ? "bg-primary hover:bg-primary/90 text-white shadow-primary/20 active:scale-[0.98] cursor-pointer"
+                        : "bg-muted text-muted-foreground border border-transparent cursor-not-allowed"
                   }`}
                 >
                   {status === "sending" ? (
@@ -777,8 +780,8 @@ export default function Landing() {
                   )}
                 </button>
                 {status === "error" && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-xs text-red-700 font-medium">{errorMessage}</p>
+                  <div className="p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg">
+                    <p className="text-xs text-red-700 dark:text-red-400 font-medium">{errorMessage}</p>
                   </div>
                 )}
                 <p className="text-[10px] text-center text-muted-foreground font-medium mt-1">Response within 12 business hours.</p>
@@ -804,11 +807,11 @@ export default function Landing() {
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Redefining the industrial waste landscape through artificial intelligence and automated robotics. Built for a sustainable, data-driven future.
               </p>
-              {/* Small Social Icons Mock */}
-              <div className="flex gap-4.5 pt-2 text-muted-foreground">
-                <span className="w-5 h-5 rounded bg-slate-200 dark:bg-[#1e3a5f] flex items-center justify-center font-bold text-xs cursor-pointer hover:text-[#2563eb] dark:hover:text-blue-400">𝕏</span>
-                <span className="w-5 h-5 rounded bg-slate-200 dark:bg-[#1e3a5f] flex items-center justify-center font-bold text-xs cursor-pointer hover:text-[#2563eb] dark:hover:text-blue-400">in</span>
-                <span className="w-5 h-5 rounded bg-slate-200 dark:bg-[#1e3a5f] flex items-center justify-center font-bold text-xs cursor-pointer hover:text-[#2563eb] dark:hover:text-blue-400">f</span>
+              {/* Small Social Icons */}
+              <div className="flex gap-3 pt-2 text-muted-foreground">
+                <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center font-bold text-xs cursor-pointer hover:bg-primary hover:text-white dark:hover:bg-emerald-500 dark:hover:text-slate-950 transition-colors">𝕏</span>
+                <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center font-bold text-xs cursor-pointer hover:bg-primary hover:text-white dark:hover:bg-emerald-500 dark:hover:text-slate-950 transition-colors">in</span>
+                <span className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center font-bold text-xs cursor-pointer hover:bg-primary hover:text-white dark:hover:bg-emerald-500 dark:hover:text-slate-950 transition-colors">f</span>
               </div>
             </div>
 
@@ -824,7 +827,7 @@ export default function Landing() {
                 <ul className="flex flex-col gap-2.5 text-xs text-muted-foreground">
                   {col.items.map(item => (
                     <li key={item}>
-                      <a href="#" className="hover:text-[#2563eb] dark:hover:text-blue-400 transition-colors">{item}</a>
+                      <a href="#" className="hover:text-primary dark:hover:text-emerald-400 transition-colors">{item}</a>
                     </li>
                   ))}
                 </ul>

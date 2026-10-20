@@ -13,7 +13,10 @@ import {
   X,
   ChevronDown,
   LogOut,
+  Download,
 } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
+import { triggerPwaInstall } from "./PwaInstallPrompt";
 
 export interface SideNavProps {
   isOpen: boolean;
@@ -260,14 +263,31 @@ export function SideNav({ isOpen, onClose }: SideNavProps) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border flex flex-col gap-2">
           <button
             onClick={() => {
-              localStorage.removeItem("userRole");
               onClose();
-              navigate("/");
+              triggerPwaInstall();
             }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#ba1a1a] dark:text-red-500 hover:bg-[#ffdad6]/50 dark:hover:bg-red-500/10 font-semibold transition-colors text-left cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 active:scale-[0.98] font-bold transition-all text-left cursor-pointer"
+          >
+            <Download className="w-5 h-5 text-emerald-600 dark:text-emerald-400" strokeWidth={2} />
+            <span>Install App</span>
+          </button>
+
+          <button
+            onClick={async () => {
+              try {
+                await supabase.auth.signOut();
+              } catch (err) {
+                console.warn("Signout error:", err);
+              } finally {
+                localStorage.removeItem("userRole");
+                onClose();
+                navigate("/");
+              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-[#ba1a1a] dark:text-red-500 hover:bg-[#ffdad6]/50 dark:hover:bg-red-500/10 active:scale-[0.98] font-semibold transition-all text-left cursor-pointer"
           >
             <LogOut className="w-5 h-5" strokeWidth={2} />
             {t("sideNav.signOut")}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Loader2, CheckSquare, X, Check, RefreshCw } from "lucide-react";
+import { Loader2, CheckSquare, X, Check, RefreshCw, Search, ChevronDown, Sparkles } from "lucide-react";
 import { PageLayout } from "../../components/PageLayout";
 import { StatusBadge } from "../../components/StatusBadge";
 import { MetricCard } from "../../components/MetricCard";
@@ -45,6 +45,48 @@ const KNUST_FACILITIES = [
   },
 ];
 
+interface OfflineJobAction {
+  id: string;
+  jobId: string;
+  status: "In Transit" | "Completed";
+  collectorId?: string;
+  timestamp: number;
+}
+
+const getOfflineQueue = (): OfflineJobAction[] => {
+  try {
+    const raw = localStorage.getItem("smartsort_offline_job_queue");
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveOfflineQueue = (queue: OfflineJobAction[]) => {
+  try {
+    localStorage.setItem("smartsort_offline_job_queue", JSON.stringify(queue));
+    window.dispatchEvent(new Event("smartsort_offline_queue_updated"));
+  } catch (err) {
+    console.warn("Failed to persist offline queue:", err);
+  }
+};
+
+const queueOfflineAction = (action: Omit<OfflineJobAction, "id" | "timestamp">) => {
+  const queue = getOfflineQueue();
+  const existingIdx = queue.findIndex((item) => item.jobId === action.jobId);
+  const newItem: OfflineJobAction = {
+    ...action,
+    id: `queue_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: Date.now(),
+  };
+  if (existingIdx >= 0) {
+    queue[existingIdx] = newItem;
+  } else {
+    queue.push(newItem);
+  }
+  saveOfflineQueue(queue);
+};
+
 export default function CollectorDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<
@@ -53,6 +95,11 @@ export default function CollectorDashboard() {
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [facilities, setFacilities] = useState(KNUST_FACILITIES);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [urgencyFilter, setUrgencyFilter] = useState<"all" | "Critical" | "High" | "Normal">("all");
+
+  const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
+  const [offlineQueueCount, setOfflineQueueCount] = useState<number>(() => getOfflineQueue().length);
 
   const [myCollectorId, setMyCollectorId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{
@@ -64,6 +111,16 @@ export default function CollectorDashboard() {
   } | null>(null);
 
   const baseUrl = (import.meta as any).env?.VITE_API_BASE_URL ?? "http://localhost:5000";
+
+  useEffect(() => {
+    const updateCount = () => setOfflineQueueCount(getOfflineQueue().length);
+    window.addEventListener("smartsort_offline_queue_updated", updateCount);
+    window.addEventListener("storage", updateCount);
+    return () => {
+      window.removeEventListener("smartsort_offline_queue_updated", updateCount);
+      window.removeEventListener("storage", updateCount);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -104,7 +161,10 @@ export default function CollectorDashboard() {
 
   const jobs = useMemo(() => {
     if (!fetchedJobs || !Array.isArray(fetchedJobs)) return [];
-    return fetchedJobs.map((job: any) => {
+    return fetchedJobs.map((rawJob: any) => {
+      const override = optimisticOverrides[rawJob.id] || {};
+      const job = { ...rawJob, ...override };
+
       const assignedTo = job.assignedTo ? String(job.assignedTo).toLowerCase() : "";
       const assignedId = job.assignedToId ? String(job.assignedToId) : "";
       const assignedAuthId = job.assignedToAuthId ? String(job.assignedToAuthId) : "";
@@ -137,7 +197,7 @@ export default function CollectorDashboard() {
         assignedTo.includes("kwame")
       );
 
-      const isAssigned = matchesId || matchesName || matchesEmail || isKwameDemo;
+      const isAssigned = matchesId || matchesName || matchesEmail || isKwameDemo || Boolean(override.isAssignedToMe);
 
       const rawLocation = job.location;
       const cleanLocation =
@@ -154,7 +214,7 @@ export default function CollectorDashboard() {
         isAssignedToMe: isAssigned,
       };
     });
-  }, [fetchedJobs, myCollectorId, currentUser]);
+  }, [fetchedJobs, myCollectorId, currentUser, optimisticOverrides]);
 
   // Track job assignment states to accurately trigger toast notifications
   const isFirstLoadRef = useRef(true);
@@ -236,7 +296,7 @@ export default function CollectorDashboard() {
   useEffect(() => {
     const baseUrl =
       (import.meta as any).env?.VITE_API_BASE_URL ?? "http://localhost:5000";
-    fetch(`${baseUrl}/api/admin/facilities`)
+    authFetch(`${baseUrl}/api/admin/facilities`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -250,7 +310,7 @@ export default function CollectorDashboard() {
         }
       })
       .catch(() => {});
-  }, []);
+  }, [baseUrl]);
 
   const currentFacility = useMemo(() => {
     return (
@@ -266,8 +326,70 @@ export default function CollectorDashboard() {
   }, [facilities, selectedFacilityId]);
 
   const [isOptimized, setIsOptimized] = useState(true);
-  const [isOffline, setIsOffline] = useState(false);
+  const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [remindJobId, setRemindJobId] = useState<string | null>(null);
+
+  // Synchronize queued offline job actions with backend when connection is active
+  const syncOfflineQueue = async () => {
+    const queue = getOfflineQueue();
+    if (queue.length === 0) return;
+
+    let syncedCount = 0;
+    const remainingQueue: OfflineJobAction[] = [];
+
+    for (const item of queue) {
+      try {
+        const payload: any = { status: item.status };
+        if (item.collectorId) payload.collectorId = item.collectorId;
+
+        const res = await authFetch(`${baseUrl}/api/jobs/${item.jobId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          syncedCount++;
+        } else {
+          remainingQueue.push(item);
+        }
+      } catch (err) {
+        console.warn(`Failed to sync queued action for job ${item.jobId}:`, err);
+        remainingQueue.push(item);
+      }
+    }
+
+    saveOfflineQueue(remainingQueue);
+    setOfflineQueueCount(remainingQueue.length);
+
+    if (syncedCount > 0) {
+      toast.success(`Synced ${syncedCount} offline task update${syncedCount > 1 ? "s" : ""} to server!`);
+      setOptimisticOverrides({});
+      await refreshJobs();
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      syncOfflineQueue();
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    if (navigator.onLine) {
+      syncOfflineQueue();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [baseUrl]);
 
   // Sorting assignments: Critical first, then High, then Normal, then by fill level descending
   const getOptimizedRoute = (activeJobs: typeof jobs) => {
@@ -288,12 +410,39 @@ export default function CollectorDashboard() {
     (!j.assignedToId || j.assignedToId === "Unassigned" || !j.assignedTo);
 
   const handleClaimJob = async (id: string) => {
-    try {
-      if (!myCollectorId) {
-        toast.error("Collector ID not found. Please log in again.");
-        return;
-      }
+    // Haptic feedback for tactile feel on mobile devices
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try { navigator.vibrate([40, 30, 40]); } catch {}
+    }
 
+    if (!myCollectorId) {
+      toast.error("Collector ID not found. Please log in again.");
+      return;
+    }
+
+    // Immediate optimistic override for instant feedback
+    setOptimisticOverrides((prev) => ({
+      ...prev,
+      [id]: {
+        status: "In Transit",
+        assignedToId: myCollectorId,
+        assignedTo: currentUser?.name || "Me",
+        isAssignedToMe: true,
+      },
+    }));
+
+    if (!navigator.onLine) {
+      queueOfflineAction({
+        jobId: id,
+        status: "In Transit",
+        collectorId: myCollectorId,
+      });
+      toast.info("Offline: Task claimed and queued for automatic sync.");
+      setActiveTab("my_jobs");
+      return;
+    }
+
+    try {
       const response = await authFetch(`${baseUrl}/api/jobs/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -306,14 +455,47 @@ export default function CollectorDashboard() {
       } else {
         const errJson = await response.json().catch(() => ({}));
         toast.error(errJson.message || "Failed to claim job");
+        setOptimisticOverrides((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
       }
     } catch (e) {
-      console.error("Error claiming job", e);
-      toast.error("Network error claiming job");
+      console.warn("Network error claiming job, queueing offline:", e);
+      queueOfflineAction({
+        jobId: id,
+        status: "In Transit",
+        collectorId: myCollectorId,
+      });
+      toast.info("Connection lost: Task claimed and queued for sync.");
+      setActiveTab("my_jobs");
     }
   };
 
   const handleCompleteJob = async (id: string) => {
+    // Haptic feedback for task completion
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try { navigator.vibrate([60, 40, 60]); } catch {}
+    }
+
+    // Immediate optimistic update
+    setOptimisticOverrides((prev) => ({
+      ...prev,
+      [id]: {
+        status: "Completed",
+      },
+    }));
+
+    if (!navigator.onLine) {
+      queueOfflineAction({
+        jobId: id,
+        status: "Completed",
+      });
+      toast.success("Task marked complete offline! Queued for sync.");
+      return;
+    }
+
     try {
       const response = await authFetch(`${baseUrl}/api/jobs/${id}`, {
         method: "PATCH",
@@ -326,10 +508,19 @@ export default function CollectorDashboard() {
       } else {
         const errJson = await response.json().catch(() => ({}));
         toast.error(errJson.message || "Failed to complete job");
+        setOptimisticOverrides((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
       }
     } catch (e) {
-      console.error("Error completing job", e);
-      toast.error("Network error completing job");
+      console.warn("Network error completing job, queueing offline:", e);
+      queueOfflineAction({
+        jobId: id,
+        status: "Completed",
+      });
+      toast.info("Connection lost: Task completed offline and queued for sync.");
     }
   };
 
@@ -353,16 +544,28 @@ export default function CollectorDashboard() {
 
   // Determine which jobs to display in lists
   const displayedJobs = (() => {
-    const baseList = jobs.filter((job) =>
+    let baseList = jobs.filter((job) =>
       activeTab === "my_jobs"
         ? job.isAssignedToMe
         : isJobAvailable(job),
     );
     if (activeTab === "my_jobs" && isOptimized) {
       const completed = baseList.filter((j) => j.status === "Completed");
-      return [...optimizedRoute, ...completed];
+      baseList = [...optimizedRoute, ...completed];
     }
-    return baseList;
+    return baseList.filter((job) => {
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        (job.location && job.location.toLowerCase().includes(q)) ||
+        (job.device && job.device.toLowerCase().includes(q)) ||
+        (job.zone && job.zone.toLowerCase().includes(q));
+
+      const matchesUrgency =
+        urgencyFilter === "all" || job.urgency === urgencyFilter;
+
+      return matchesSearch && matchesUrgency;
+    });
   })();
 
   return (
@@ -404,9 +607,24 @@ export default function CollectorDashboard() {
             </span>
           </div>
           <div>
-            <h2 className="text-sm font-bold text-foreground dark:text-white">
-              Daily Quota Progress
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground dark:text-white">
+                Daily Quota Progress
+              </h2>
+              {quotaPercentage === 100 ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  <Sparkles className="w-2.5 h-2.5" /> Target Met
+                </span>
+              ) : quotaPercentage >= 50 ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                  On Track
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  In Progress
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Completed {completedToday} of {totalMyAssignments} assigned bins
               today.
@@ -417,21 +635,26 @@ export default function CollectorDashboard() {
         {/* Collector Assigned Facility Location Selector */}
         <div className="flex items-center gap-3 flex-wrap md:flex-nowrap">
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-              Assigned Collector Facility
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">
+              Assigned Facility
             </span>
-            <select
-              value={selectedFacilityId}
-              onChange={(e) => setSelectedFacilityId(e.target.value)}
-              className="h-9 px-3 bg-background border border-border rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
-            >
-              <option value="">🌐 All Facilities & Zones</option>
-              {facilities.map((fac) => (
-                <option key={fac.id} value={fac.id}>
-                  📍 {fac.name} ({fac.region})
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectedFacilityId}
+                onChange={(e) => setSelectedFacilityId(e.target.value)}
+                className="h-9 pl-3 pr-8 bg-background border border-border rounded-lg text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 hover:border-foreground/30 transition-all cursor-pointer appearance-none shadow-2xs"
+              >
+                <option value="">🌐 All Facilities & Zones</option>
+                {facilities.map((fac) => (
+                  <option key={fac.id} value={fac.id}>
+                    📍 {fac.name} ({fac.region})
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground">
+                <ChevronDown className="w-3.5 h-3.5" />
+              </div>
+            </div>
           </div>
 
           {/* Quick Refresh Button */}
@@ -440,7 +663,7 @@ export default function CollectorDashboard() {
               refreshJobs();
               toast.info("Refreshed collection tasks");
             }}
-            className="h-9 px-2.5 mt-auto bg-background border border-border rounded-lg text-xs font-bold text-foreground hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="h-9 px-3 mt-auto bg-background border border-border rounded-lg text-xs font-bold text-foreground hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
             title="Refresh collection jobs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${jobsLoading ? "animate-spin text-primary" : ""}`} />
@@ -472,6 +695,38 @@ export default function CollectorDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Offline Status & Pending Queue Alert */}
+      {(isOffline || offlineQueueCount > 0) && (
+        <div
+          className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl mb-6 text-xs font-semibold shadow-sm border transition-all ${
+            isOffline
+              ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {isOffline ? (
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            ) : (
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            )}
+            <span>
+              {isOffline
+                ? `Offline Field Mode • ${offlineQueueCount} task update${offlineQueueCount === 1 ? "" : "s"} cached locally. Will sync when reconnected.`
+                : `${offlineQueueCount} queued task update${offlineQueueCount === 1 ? "" : "s"} ready to synchronize.`}
+            </span>
+          </div>
+          {!isOffline && offlineQueueCount > 0 && (
+            <button
+              onClick={syncOfflineQueue}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-xs transition-all cursor-pointer shadow-xs"
+            >
+              Sync Now ({offlineQueueCount})
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Map-First Split Layout */}
       <div className="relative w-full h-[650px] border border-border rounded-2xl overflow-hidden shadow-md flex flex-col md:flex-row bg-card">
@@ -507,11 +762,65 @@ export default function CollectorDashboard() {
             </button>
           </div>
 
+          {/* Quick Search & Urgency Filter Bar */}
+          <div className="p-2.5 border-b border-border bg-card/60 flex flex-col gap-2 shrink-0">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Filter by bin or building..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 bg-background border border-border rounded-lg text-xs placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs p-1"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {(["all", "Critical", "High", "Normal"] as const).map((urg) => (
+                <button
+                  key={urg}
+                  onClick={() => setUrgencyFilter(urg)}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer active:scale-95 ${
+                    urgencyFilter === urg
+                      ? urg === "Critical"
+                        ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                        : urg === "High"
+                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                          : urg === "Normal"
+                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                            : "bg-primary text-white"
+                      : "text-muted-foreground hover:bg-muted/50 border border-transparent"
+                  }`}
+                >
+                  {urg === "all" ? "All" : urg}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Job List Scrollable */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
             {displayedJobs.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground text-xs">
-                No active jobs to display for {currentFacility.name}.
+              <div className="text-center py-12 text-muted-foreground text-xs flex flex-col items-center gap-1">
+                <span>No active jobs match your filters.</span>
+                {(searchQuery || urgencyFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setUrgencyFilter("all");
+                    }}
+                    className="text-primary hover:underline text-[11px] font-semibold mt-1"
+                  >
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : (
               displayedJobs.map((job: any) => {
@@ -551,9 +860,23 @@ export default function CollectorDashboard() {
                       <div className="flex items-center gap-1.5">
                         <Progress
                           value={job.fill}
-                          className="w-12 h-1 bg-muted [&>[data-slot=progress-indicator]]:bg-[#ba1a1a] dark:[&>[data-slot=progress-indicator]]:bg-red-500"
+                          className={`w-12 h-1 bg-muted ${
+                            job.fill >= 80
+                              ? "[&>[data-slot=progress-indicator]]:bg-rose-500"
+                              : job.fill >= 50
+                                ? "[&>[data-slot=progress-indicator]]:bg-amber-500"
+                                : "[&>[data-slot=progress-indicator]]:bg-emerald-500"
+                          }`}
                         />
-                        <span className="text-[9px] font-bold text-[#ba1a1a] dark:text-red-400">
+                        <span
+                          className={`text-[9px] font-bold ${
+                            job.fill >= 80
+                              ? "text-rose-600 dark:text-rose-400"
+                              : job.fill >= 50
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-emerald-600 dark:text-emerald-400"
+                          }`}
+                        >
                           {job.fill}%
                         </span>
                       </div>
@@ -565,7 +888,7 @@ export default function CollectorDashboard() {
                               e.stopPropagation();
                               handleClaimJob(job.id);
                             }}
-                            className="px-2.5 py-1 bg-primary text-white text-[10px] font-bold rounded-md hover:bg-primary/90 transition-all cursor-pointer"
+                            className="px-2.5 py-1 bg-primary text-white text-[10px] font-bold rounded-md hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
                           >
                             Claim
                           </button>
@@ -575,7 +898,7 @@ export default function CollectorDashboard() {
                               e.stopPropagation();
                               setRemindJobId(job.id);
                             }}
-                            className="px-2.5 py-1 bg-primary text-white text-[10px] font-bold rounded-md hover:bg-primary/90 transition-all cursor-pointer"
+                            className="px-2.5 py-1 bg-primary text-white text-[10px] font-bold rounded-md hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
                           >
                             Mark Done
                           </button>
@@ -706,7 +1029,7 @@ export default function CollectorDashboard() {
                   <div className="flex gap-3 pt-1 border-t border-slate-100 dark:border-[#0f2942]">
                     <button
                       onClick={() => setRemindJobId(null)}
-                      className="flex-1 py-2.5 border border-slate-200 dark:border-border text-slate-500 dark:text-slate-400 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-secondary transition-colors cursor-pointer"
+                      className="flex-1 py-2.5 border border-slate-200 dark:border-border text-slate-500 dark:text-slate-400 text-xs font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-secondary active:scale-[0.98] transition-all cursor-pointer"
                     >
                       Not Yet
                     </button>
@@ -715,7 +1038,7 @@ export default function CollectorDashboard() {
                         handleCompleteJob(job.id);
                         setRemindJobId(null);
                       }}
-                      className="flex-1 py-2.5 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-colors shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="flex-1 py-2.5 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Check className="w-[13px] h-[13px]" strokeWidth={3} />
                       Confirm Complete

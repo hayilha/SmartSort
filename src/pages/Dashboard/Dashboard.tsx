@@ -14,6 +14,11 @@ import {
   Zap,
   ChevronRight,
   Clock,
+  Maximize2,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  Eye,
+  X,
 } from "lucide-react";
 import { useNavigate, useSearchParams, Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
@@ -21,6 +26,13 @@ import { MetricCard } from "../../components/MetricCard";
 import { StatusBadge } from "../../components/StatusBadge";
 import { Progress } from "../../components/ui/progress";
 import { BinLocatorMap } from "../../components/BinLocatorMap";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../../components/ui/dialog";
 import {
   Table,
   TableHeader,
@@ -37,7 +49,7 @@ import {
   PopoverTrigger,
 } from "../../components/ui/popover";
 import { Calendar } from "../../components/ui/calendar";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 
 import imgEventSnap from "../../assets/9389a9333045e821be3474418e89b876d4fc0c10.png";
 import imgEventSnap1 from "../../assets/8811709787b7f35f6b7245b79da448b564be54ea.png";
@@ -167,7 +179,25 @@ export default function Dashboard() {
   const { t } = useTranslation();
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date>(new Date());
+  const [datePreset, setDatePreset] = useState<"today" | "7d" | "30d" | "custom">("today");
+  const [selectedEventForPreview, setSelectedEventForPreview] = useState<any | null>(null);
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+
+  const handleSelectPreset = (preset: "today" | "7d" | "30d") => {
+    setDatePreset(preset);
+    const now = new Date();
+    if (preset === "today") {
+      setStartDate(now);
+      setEndDate(now);
+    } else if (preset === "7d") {
+      setStartDate(subDays(now, 7));
+      setEndDate(now);
+    } else if (preset === "30d") {
+      setStartDate(subDays(now, 30));
+      setEndDate(now);
+    }
+  };
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const facilityId = searchParams.get("facilityId") || "";
@@ -557,10 +587,31 @@ export default function Dashboard() {
       description={t("dashboard.description")}
       actions={
         <>
-          <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1 shadow-sm">
+          {/* Quick Presets */}
+          <div className="hidden sm:flex items-center bg-card border border-border rounded-lg p-0.5 shadow-2xs">
+            {(["today", "7d", "30d"] as const).map((preset) => (
+              <button
+                key={preset}
+                onClick={() => handleSelectPreset(preset)}
+                className={`px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer active:scale-95 ${
+                  datePreset === preset
+                    ? "bg-primary text-white shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {preset === "today" ? "Today" : preset === "7d" ? "7D" : "30D"}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1 shadow-2xs">
+            <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
             <Popover>
               <PopoverTrigger asChild>
-                <button className="bg-transparent text-foreground dark:text-white text-sm font-semibold focus:outline-none focus:ring-0 cursor-pointer w-[120px] text-left">
+                <button
+                  onClick={() => setDatePreset("custom")}
+                  className="bg-transparent text-foreground text-xs font-semibold focus:outline-none focus:ring-0 cursor-pointer w-[95px] sm:w-[110px] text-left hover:text-primary transition-colors"
+                >
                   {startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}
                 </button>
               </PopoverTrigger>
@@ -568,17 +619,25 @@ export default function Dashboard() {
                 <Calendar
                   mode="single"
                   selected={startDate}
-                  onSelect={(date) => date && setStartDate(date)}
+                  onSelect={(date) => {
+                    if (date) {
+                      setStartDate(date);
+                      setDatePreset("custom");
+                    }
+                  }}
                   initialFocus
                 />
               </PopoverContent>
             </Popover>
-            <span className="text-muted-foreground text-sm font-semibold">
-              to
+            <span className="text-muted-foreground text-xs font-semibold">
+              –
             </span>
             <Popover>
               <PopoverTrigger asChild>
-                <button className="bg-transparent text-foreground dark:text-white text-sm font-semibold focus:outline-none focus:ring-0 cursor-pointer w-[120px] text-left">
+                <button
+                  onClick={() => setDatePreset("custom")}
+                  className="bg-transparent text-foreground text-xs font-semibold focus:outline-none focus:ring-0 cursor-pointer w-[95px] sm:w-[110px] text-left hover:text-primary transition-colors"
+                >
                   {endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}
                 </button>
               </PopoverTrigger>
@@ -586,7 +645,12 @@ export default function Dashboard() {
                 <Calendar
                   mode="single"
                   selected={endDate}
-                  onSelect={(date) => date && setEndDate(date)}
+                  onSelect={(date) => {
+                    if (date) {
+                      setEndDate(date);
+                      setDatePreset("custom");
+                    }
+                  }}
                   initialFocus
                 />
               </PopoverContent>
@@ -595,7 +659,7 @@ export default function Dashboard() {
           <button
             onClick={handleExportPDF}
             disabled={isExporting}
-            className="no-print bg-primary hover:bg-primary/90 text-white text-sm font-medium rounded-lg px-4 py-2 flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-wait"
+            className="no-print bg-primary hover:bg-primary/90 active:scale-[0.98] text-white text-xs font-bold rounded-lg px-3.5 py-2 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-70 disabled:cursor-wait shadow-2xs"
           >
             {isExporting ? (
               <>
@@ -738,7 +802,7 @@ export default function Dashboard() {
           </div>
 
           {isLoading ? (
-            <div className="flex-1 flex items-end gap-3 w-full border-b border-l border-[#f1f5f9] dark:border-[#0f2942] pt-4 pl-1 pb-1 relative animate-pulse">
+            <div className="flex-1 flex items-end gap-3 w-full border-b border-l border-border pt-4 pl-1 pb-1 relative animate-pulse">
               {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                 <div
                   key={i}
@@ -750,7 +814,21 @@ export default function Dashboard() {
               ))}
             </div>
           ) : (
-            <div className="flex-1 flex items-end gap-3 w-full border-b border-l border-[#f1f5f9] dark:border-[#0f2942] pt-4 pl-1 pb-1 relative">
+            <div className="flex-1 flex items-end gap-3 w-full border-b border-l border-border pt-4 pl-1 pb-1 relative">
+              {/* Subtle Horizontal Reference Gridlines */}
+              <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none pb-6 pl-1 pr-2 opacity-30 dark:opacity-20 z-0">
+                <div className="w-full border-b border-dashed border-border flex justify-end">
+                  <span className="text-[9px] font-mono text-muted-foreground -mt-3.5 mr-1">{maxTotal}</span>
+                </div>
+                <div className="w-full border-b border-dashed border-border flex justify-end">
+                  <span className="text-[9px] font-mono text-muted-foreground -mt-3.5 mr-1">{Math.round(maxTotal * 0.66)}</span>
+                </div>
+                <div className="w-full border-b border-dashed border-border flex justify-end">
+                  <span className="text-[9px] font-mono text-muted-foreground -mt-3.5 mr-1">{Math.round(maxTotal * 0.33)}</span>
+                </div>
+                <div className="w-full border-b border-transparent"></div>
+              </div>
+
               {chartData.map((data: any, idx: number) => {
                 const total = data.sorted + data.rejected;
                 const totalHeightPercent = (total / maxTotal) * 100;
@@ -762,11 +840,11 @@ export default function Dashboard() {
                 return (
                   <div
                     key={idx}
-                    className="flex-1 flex flex-col items-center justify-end h-full group"
+                    className="flex-1 flex flex-col items-center justify-end h-full group z-10"
                   >
-                    <div className="w-full bg-[#f4f4f4] dark:bg-card/20 rounded-t-xl relative h-full flex items-end group-hover:bg-muted dark:group-hover:bg-card/40 transition-colors">
+                    <div className="w-full bg-[#f4f4f4] dark:bg-card/40 rounded-t-xl relative h-full flex items-end group-hover:bg-muted dark:group-hover:bg-card/70 transition-colors">
                       {/* Tooltip */}
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-10">
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center pointer-events-none z-20">
                         <div className="bg-slate-900 dark:bg-slate-800 text-white text-[11px] rounded-lg py-1.5 px-2.5 shadow-lg border border-slate-700/50 flex flex-col gap-1 min-w-[110px]">
                           <div className="font-semibold text-center border-b border-slate-700 pb-1">
                             {data.time}
@@ -812,7 +890,7 @@ export default function Dashboard() {
                         />
                       </div>
                     </div>
-                    <span className="text-[10px] text-muted-foreground mt-2 group-hover:text-muted-foreground dark:group-hover:text-muted-foreground">
+                    <span className="text-[10px] text-muted-foreground mt-2 group-hover:text-foreground transition-colors font-medium">
                       {data.time}
                     </span>
                   </div>
@@ -830,7 +908,7 @@ export default function Dashboard() {
 
           {isLoading ? (
             <div className="flex-1 flex flex-row items-center justify-center relative animate-pulse w-full gap-8 lg:gap-12">
-              <div className="w-56 h-56 rounded-full border-[20px] border-slate-100 dark:border-[#0f2942] flex items-center justify-center flex-shrink-0">
+              <div className="w-56 h-56 rounded-full border-[20px] border-slate-100 dark:border-secondary flex items-center justify-center flex-shrink-0">
                 <div className="h-6 w-16 bg-slate-200 dark:bg-muted rounded"></div>
               </div>
               <div className="flex flex-col gap-6 justify-center">
@@ -861,9 +939,9 @@ export default function Dashboard() {
                     cy="50"
                     r="40"
                     fill="transparent"
-                    stroke="#f1f5f9"
+                    stroke="currentColor"
                     strokeWidth="10"
-                    className="dark:stroke-[#0f2942]"
+                    className="text-slate-100 dark:text-secondary/50"
                   />
                   {/* Slices */}
                   {(() => {
@@ -892,6 +970,7 @@ export default function Dashboard() {
                         strokeLength -
                         (accumulatedPercent / 100) * 251.2;
                       accumulatedPercent += percent;
+                      const isHovered = hoveredCategory === cat.category;
 
                       return (
                         <circle
@@ -901,29 +980,58 @@ export default function Dashboard() {
                           r="40"
                           fill="transparent"
                           stroke={categoryColors[cat.category] ?? "#cbd5e1"}
-                          strokeWidth="10"
+                          strokeWidth={isHovered ? "14" : "10"}
+                          opacity={hoveredCategory && !isHovered ? 0.4 : 1}
                           strokeDasharray={`${strokeLength} 251.2`}
                           strokeDashoffset={strokeOffset}
                           strokeLinecap="round"
-                          className="transition-all duration-1000 ease-out"
+                          className="transition-all duration-300 ease-out cursor-pointer"
+                          onMouseEnter={() => setHoveredCategory(cat.category)}
+                          onMouseLeave={() => setHoveredCategory(null)}
                         />
                       );
                     });
                   })()}
                 </svg>
 
-                {/* Centered Total */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-3xl font-black text-foreground dark:text-white tracking-tight">
-                    {(wasteCategoriesData?.total ?? 42891).toLocaleString()}
-                  </span>
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
-                    {t("dashboard.charts.totalProcessed")}
-                  </span>
+                {/* Centered Total / Hover Readout */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-200">
+                  {hoveredCategory ? (
+                    (() => {
+                      const categories = wasteCategoriesData?.categories ?? [
+                        { category: "Plastic", percentage: 35 },
+                        { category: "Paper", percentage: 22 },
+                        { category: "Metal", percentage: 18 },
+                        { category: "Other", percentage: 25 },
+                      ];
+                      const matched = categories.find((c: any) => c.category === hoveredCategory);
+                      const totalNum = wasteCategoriesData?.total ?? 42891;
+                      const catCount = matched ? Math.round((totalNum * matched.percentage) / 100) : 0;
+                      return (
+                        <>
+                          <span className="text-3xl font-black text-foreground dark:text-white tracking-tight animate-in fade-in duration-150">
+                            {catCount.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] font-bold text-primary dark:text-emerald-400 uppercase tracking-widest mt-1 animate-in fade-in duration-150">
+                            {hoveredCategory} ({matched?.percentage}%)
+                          </span>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <>
+                      <span className="text-3xl font-black text-foreground dark:text-white tracking-tight">
+                        {(wasteCategoriesData?.total ?? 42891).toLocaleString()}
+                      </span>
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">
+                        {t("dashboard.charts.totalProcessed")}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-center gap-6">
+              <div className="flex flex-col justify-center gap-4">
                 {(
                   wasteCategoriesData?.categories ?? [
                     { category: "Plastic", percentage: 35 },
@@ -938,13 +1046,21 @@ export default function Dashboard() {
                     Metal: "bg-[#fbbf24]",
                     Other: "bg-[#cbd5e1] dark:bg-slate-500",
                   };
+                  const isHovered = hoveredCategory === cat.category;
                   return (
-                    <div key={i} className="flex items-start gap-3.5 group">
+                    <div
+                      key={i}
+                      onMouseEnter={() => setHoveredCategory(cat.category)}
+                      onMouseLeave={() => setHoveredCategory(null)}
+                      className={`flex items-start gap-3.5 group cursor-pointer p-1.5 -mx-1.5 rounded-lg transition-all ${
+                        isHovered ? "bg-muted/70 scale-[1.02]" : "hover:bg-muted/30"
+                      }`}
+                    >
                       <div
-                        className={`w-3 h-3 rounded-full mt-1.5 ${colors[cat.category] ?? "bg-[#cbd5e1]"}`}
+                        className={`w-3 h-3 rounded-full mt-1.5 shrink-0 ${colors[cat.category] ?? "bg-[#cbd5e1]"}`}
                       />
                       <div className="flex flex-col">
-                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest group-hover:text-foreground transition-colors">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider group-hover:text-foreground transition-colors">
                           {
                             t(
                               `dashboard.charts.${cat.category.toLowerCase()}`,
@@ -1063,7 +1179,7 @@ export default function Dashboard() {
 
           <Table className="min-w-[700px]">
             <TableHeader>
-              <TableRow className="bg-background dark:bg-secondary border-b border-[#f1f5f9] dark:border-[#0f2942] hover:bg-background dark:hover:bg-secondary">
+              <TableRow className="bg-background dark:bg-secondary border-b border-border hover:bg-background dark:hover:bg-secondary">
                 <TableHead className="px-6 py-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   {t("dashboard.table.timestamp")}
                 </TableHead>
@@ -1084,7 +1200,7 @@ export default function Dashboard() {
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody className="divide-y divide-[#f1f5f9]">
+            <TableBody className="divide-y divide-border">
               {isLoading
                 ? Array.from({ length: 4 }).map((_, idx) => (
                     <TableRow key={idx} className="animate-pulse">
@@ -1112,7 +1228,7 @@ export default function Dashboard() {
                     (evt: any) => (
                       <TableRow
                         key={evt.id}
-                        className="hover:bg-background dark:hover:bg-secondary transition-colors border-b border-[#f1f5f9]"
+                        className="hover:bg-muted/50 transition-colors border-b border-border"
                       >
                         <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-medium text-muted-foreground">
                           {evt.time}
@@ -1126,11 +1242,15 @@ export default function Dashboard() {
                             variant={evt.detectionType as any}
                           />
                         </TableCell>
-                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-bold text-[#ba1a1a] dark:text-red-400">
+                        <TableCell className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-600 dark:text-red-400">
                           {evt.confidence}
                         </TableCell>
                         <TableCell className="px-6 py-4 whitespace-nowrap">
-                          <div className="w-10 h-10 rounded-md overflow-hidden border border-border">
+                          <button
+                            onClick={() => setSelectedEventForPreview(evt)}
+                            className="w-10 h-10 rounded-lg overflow-hidden border border-border hover:border-primary hover:scale-105 active:scale-95 transition-all group relative cursor-pointer shadow-2xs block"
+                            title="Click to inspect detection snapshot"
+                          >
                             <img
                               src={
                                 eventImages[evt.img] ||
@@ -1140,9 +1260,12 @@ export default function Dashboard() {
                               alt="Snapshot"
                               className="w-full h-full object-cover"
                             />
-                          </div>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                              <Maximize2 className="w-3.5 h-3.5" />
+                            </div>
+                          </button>
                         </TableCell>
-                        <TableCell className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-muted-foreground font-mono bg-background dark:bg-secondary">
+                        <TableCell className="px-6 py-4 whitespace-nowrap text-xs font-semibold text-muted-foreground font-mono">
                           {evt.action}
                         </TableCell>
                       </TableRow>
@@ -1151,21 +1274,21 @@ export default function Dashboard() {
             </TableBody>
           </Table>
 
-          <div className="flex items-center justify-between p-4 border-t border-[#f1f5f9] dark:border-[#0f2942]">
+          <div className="flex items-center justify-between p-4 border-t border-border">
             <span className="text-sm font-medium text-muted-foreground">
               Page {detectionsPage} of{" "}
               {contaminationEventsData?.totalPages || 1}
             </span>
             <div className="flex gap-2">
               <button
-                className="px-3 py-1 bg-white dark:bg-secondary border border-[#e2e8f0] dark:border-[#1e293b] rounded-md text-sm font-medium text-foreground hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                className="px-3 py-1 bg-card border border-border rounded-md text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors active:scale-95 cursor-pointer"
                 onClick={() => setDetectionsPage((p) => Math.max(1, p - 1))}
                 disabled={detectionsPage === 1}
               >
                 Previous
               </button>
               <button
-                className="px-3 py-1 bg-white dark:bg-secondary border border-[#e2e8f0] dark:border-[#1e293b] rounded-md text-sm font-medium text-foreground hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                className="px-3 py-1 bg-card border border-border rounded-md text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 transition-colors active:scale-95 cursor-pointer"
                 onClick={() => setDetectionsPage((p) => p + 1)}
                 disabled={
                   !contaminationEventsData ||
@@ -1178,6 +1301,120 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Contamination Detection Snapshot Inspection Modal */}
+      <Dialog
+        open={!!selectedEventForPreview}
+        onOpenChange={(open) => !open && setSelectedEventForPreview(null)}
+      >
+        <DialogContent className="max-w-md p-0 overflow-hidden border border-border bg-card">
+          {selectedEventForPreview && (
+            <div>
+              {/* Header */}
+              <div className="p-4 border-b border-border flex items-center justify-between bg-muted/30">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center">
+                    <ShieldAlert className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-foreground">
+                      Detection Telemetry Inspection
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      Camera: {selectedEventForPreview.source} • {selectedEventForPreview.time}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* High-Res Snapshot with ML HUD Reticle Overlay */}
+              <div className="relative bg-black flex items-center justify-center overflow-hidden aspect-video">
+                <img
+                  src={
+                    eventImages[selectedEventForPreview.img] ||
+                    selectedEventForPreview.img ||
+                    "https://placehold.co/600x400?text=No+Snapshot"
+                  }
+                  alt={selectedEventForPreview.detection}
+                  className="w-full h-full object-contain"
+                />
+                <div className="absolute inset-2 border border-emerald-500/40 rounded pointer-events-none flex flex-col justify-between p-2">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-mono text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded">
+                      CAM: {selectedEventForPreview.source}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded">
+                      CONF: {selectedEventForPreview.confidence}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] font-mono text-emerald-400 bg-black/60 px-1.5 py-0.5 rounded">
+                      DETECTION: {selectedEventForPreview.detection}
+                    </span>
+                    <span className="text-[10px] font-mono text-red-400 bg-black/60 px-1.5 py-0.5 rounded">
+                      ACTION: {selectedEventForPreview.action}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Metadata Details */}
+              <div className="p-4 flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg bg-background border border-border flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Classification
+                    </span>
+                    <StatusBadge
+                      label={selectedEventForPreview.detection}
+                      variant={selectedEventForPreview.detectionType as any}
+                    />
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-background border border-border flex flex-col gap-1">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      Confidence
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Progress
+                        value={parseFloat(selectedEventForPreview.confidence) || 90}
+                        className="h-1.5 flex-1 [&>[data-slot=progress-indicator]]:bg-primary"
+                      />
+                      <span className="font-bold text-foreground">
+                        {selectedEventForPreview.confidence}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-background border border-border flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Automated Sorter Action:</span>
+                  <span className="font-mono font-bold text-foreground bg-muted px-2 py-0.5 rounded text-[11px]">
+                    {selectedEventForPreview.action}
+                  </span>
+                </div>
+
+                <div className="flex justify-end gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      toast.success("Event logged to operations audit stream.");
+                      setSelectedEventForPreview(null);
+                    }}
+                    className="px-3 py-1.5 bg-background border border-border hover:bg-muted text-xs font-semibold rounded-lg transition-colors cursor-pointer active:scale-95"
+                  >
+                    Log to Audit
+                  </button>
+                  <button
+                    onClick={() => setSelectedEventForPreview(null)}
+                    className="px-4 py-1.5 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors cursor-pointer active:scale-95"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

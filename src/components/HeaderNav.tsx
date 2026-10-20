@@ -7,6 +7,8 @@ import { SideNav } from "./SideNav";
 import { AlertsSidebar } from "./AlertsSidebar";
 import { ProfilePopup } from "./ProfilePopup";
 import { useTranslation } from "react-i18next";
+import { authFetch } from "../lib/authFetch";
+import { triggerPwaInstall } from "./PwaInstallPrompt";
 import "../styles/profile-popup.css";
 import {
   CommandDialog,
@@ -64,21 +66,34 @@ export function HeaderNav({ hideAlertsIcon }: HeaderNavProps = {}) {
     if (openCommand) {
       const baseUrl =
         (import.meta as any).env?.VITE_API_BASE_URL ?? "http://localhost:5000";
-      fetch(`${baseUrl}/api/devices`)
-        .then((r) => r.json())
-        .then(setDevices)
+      authFetch(`${baseUrl}/api/devices`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.devices) setDevices(data.devices);
+          else if (Array.isArray(data)) setDevices(data);
+          else if (data?.data && Array.isArray(data.data)) setDevices(data.data);
+        })
         .catch(() => {});
-      fetch(`${baseUrl}/api/collectors`)
-        .then((r) => r.json())
-        .then(setCollectors)
+      authFetch(`${baseUrl}/api/collectors`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) setCollectors(data);
+          else if (data?.data && Array.isArray(data.data)) setCollectors(data.data);
+        })
         .catch(() => {});
-      fetch(`${baseUrl}/api/jobs`)
-        .then((r) => r.json())
-        .then(setJobs)
+      authFetch(`${baseUrl}/api/jobs`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) setJobs(data);
+          else if (data?.data && Array.isArray(data.data)) setJobs(data.data);
+        })
         .catch(() => {});
-      fetch(`${baseUrl}/api/alerts`)
-        .then((r) => r.json())
-        .then(setAlerts)
+      authFetch(`${baseUrl}/api/alerts`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data)) setAlerts(data);
+          else if (data?.data && Array.isArray(data.data)) setAlerts(data.data);
+        })
         .catch(() => {});
     }
   }, [openCommand]);
@@ -298,6 +313,18 @@ export function HeaderNav({ hideAlertsIcon }: HeaderNavProps = {}) {
             </button>
           )}
 
+          {/* Quick Install PWA action button */}
+          <button
+            onClick={triggerPwaInstall}
+            data-testid="header-install-btn"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 min-h-[38px] rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-[0.98] border border-emerald-500/20 transition-all cursor-pointer"
+            title="Install SmartSort App"
+            aria-label="Install SmartSort App"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Install App</span>
+          </button>
+
           {/* Settings Menu */}
           <div className="relative" ref={settingsRef}>
             <button
@@ -315,6 +342,23 @@ export function HeaderNav({ hideAlertsIcon }: HeaderNavProps = {}) {
                   <h4 className="text-sm font-semibold text-foreground dark:text-white">
                     {t("headerNav.settings")}
                   </h4>
+                </div>
+
+                {/* Quick Install PWA inside Settings */}
+                <div className="px-4 py-2.5 border-b border-[#f1f5f9] dark:border-[#0f2942]">
+                  <button
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      triggerPwaInstall();
+                    }}
+                    className="w-full flex items-center justify-between py-1.5 px-2.5 rounded-lg text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 active:scale-[0.98] transition-all cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                      Install SmartSort PWA
+                    </span>
+                    <span className="text-[10px] font-mono uppercase bg-emerald-500/20 px-1 py-0.5 rounded font-bold">App</span>
+                  </button>
                 </div>
 
                 {/* Language */}

@@ -6,13 +6,38 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+export function triggerPwaInstall() {
+  window.dispatchEvent(new CustomEvent("open-pwa-install"));
+}
+
 export function PwaInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState<boolean>(false);
   const [isIos, setIsIos] = useState<boolean>(false);
   const [showIosInstructions, setShowIosInstructions] = useState<boolean>(false);
+  const [showDesktopInstructions, setShowDesktopInstructions] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
   const [showOnlineToast, setShowOnlineToast] = useState<boolean>(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
+
+  const updatePendingCount = () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem("smartsort_offline_job_queue") || "[]");
+      setPendingSyncCount(Array.isArray(queue) ? queue.length : 0);
+    } catch {
+      setPendingSyncCount(0);
+    }
+  };
+
+  useEffect(() => {
+    updatePendingCount();
+    window.addEventListener("smartsort_offline_queue_updated", updatePendingCount);
+    window.addEventListener("storage", updatePendingCount);
+    return () => {
+      window.removeEventListener("smartsort_offline_queue_updated", updatePendingCount);
+      window.removeEventListener("storage", updatePendingCount);
+    };
+  }, []);
 
   useEffect(() => {
     // 1. Check if already installed & running standalone
@@ -65,6 +90,7 @@ export function PwaInstallPrompt() {
     const handleOnline = () => {
       setIsOffline(false);
       setShowOnlineToast(true);
+      updatePendingCount();
       const timer = setTimeout(() => setShowOnlineToast(false), 4000);
       return () => clearTimeout(timer);
     };
@@ -72,6 +98,7 @@ export function PwaInstallPrompt() {
     const handleOffline = () => {
       setIsOffline(true);
       setShowOnlineToast(false);
+      updatePendingCount();
     };
 
     window.addEventListener("online", handleOnline);
@@ -101,7 +128,7 @@ export function PwaInstallPrompt() {
         console.warn("[PWA] Installation prompt failed:", err);
       }
     } else {
-      setShowIosInstructions(true);
+      setShowDesktopInstructions(true);
     }
   };
 
@@ -117,7 +144,10 @@ export function PwaInstallPrompt() {
         <div className="fixed bottom-4 left-4 z-50 bg-amber-600 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3 border border-amber-400/40 animate-pulse backdrop-blur-md">
           <WifiOff className="w-4 h-4 shrink-0 text-amber-200" />
           <div className="text-xs">
-            <span className="font-bold">Offline Field Mode Active:</span> Telemetry cached locally.
+            <span className="font-bold">Offline Field Mode Active:</span>{" "}
+            {pendingSyncCount > 0
+              ? `${pendingSyncCount} action${pendingSyncCount > 1 ? "s" : ""} queued for sync.`
+              : "Telemetry cached locally."}
           </div>
         </div>
       )}
@@ -164,7 +194,7 @@ export function PwaInstallPrompt() {
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={handleInstallClick}
-              className="flex-1 py-2 px-3.5 bg-[#006c49] hover:bg-[#006c49]/90 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 py-2 px-3.5 bg-[#006c49] hover:bg-[#006c49]/90 active:scale-[0.98] text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Install to Device</span>
@@ -222,9 +252,60 @@ export function PwaInstallPrompt() {
 
             <button
               onClick={() => setShowIosInstructions(false)}
-              className="w-full mt-1 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary/90 transition-colors cursor-pointer"
+              className="w-full mt-1 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
             >
               Got it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Desktop / Browser Installation Modal ── */}
+      {showDesktopInstructions && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-card dark:bg-[#071728] text-foreground dark:text-white max-w-sm w-full rounded-2xl p-5 shadow-2xl border border-border flex flex-col gap-4 animate-in fade-in zoom-in-95">
+            <div className="flex justify-between items-center border-b border-border pb-3">
+              <h3 className="text-sm font-black flex items-center gap-2">
+                <Download className="w-4 h-4 text-emerald-500" />
+                Install SmartSort
+              </h3>
+              <button
+                onClick={() => setShowDesktopInstructions(false)}
+                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Install as a standalone desktop or mobile application for instant offline access and faster loading:
+            </p>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="flex items-center gap-3 bg-muted/50 p-2.5 rounded-xl">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-xs shrink-0">
+                  1
+                </span>
+                <span className="flex items-center gap-1.5 leading-normal">
+                  Look for the <strong>Install</strong> icon <Download className="w-3.5 h-3.5 inline text-emerald-500" /> in your browser address bar (top right).
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3 bg-muted/50 p-2.5 rounded-xl">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-xs shrink-0">
+                  2
+                </span>
+                <span className="leading-normal">
+                  Alternatively, open your browser menu (<strong>⋮</strong> or <strong>…</strong>) and select <strong>"Install SmartSort"</strong>.
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowDesktopInstructions(false)}
+              className="w-full mt-1 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary/90 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              Understood
             </button>
           </div>
         </div>
